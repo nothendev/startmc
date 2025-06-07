@@ -62,6 +62,12 @@ pub struct VersionLibrary {
     pub rules: Vec<Rule>,
 }
 
+impl VersionLibrary {
+    pub fn check(&self) -> bool {
+        self.rules.iter().all(|r| r.check())
+    }
+}
+
 #[derive(Deserialize, Debug)]
 pub struct VersionLibraryDownloads {
     pub artifact: MojapiArtifact,

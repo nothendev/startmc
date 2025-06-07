@@ -1,9 +1,11 @@
 use serde::Deserialize;
 
+mod assets;
 mod argument;
 mod file;
 mod rule;
 mod version;
+pub use assets::*;
 pub use argument::*;
 pub use file::*;
 pub use rule::*;
@@ -43,11 +45,7 @@ pub struct VersionManifestVersion {
 
 impl VersionManifestVersion {
     pub async fn fetch(&self, rq: &reqwest::Client) -> Result<VersionPackage, reqwest::Error> {
-        rq.get(&self.url)
-            .send()
-            .await?
-            .json()
-            .await
+        rq.get(&self.url).send().await?.json().await
     }
 }
 
@@ -57,5 +55,5 @@ pub enum VersionType {
     Release,
     Snapshot,
     OldBeta,
-    OldAlpha
+    OldAlpha,
 }

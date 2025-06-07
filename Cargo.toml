@@ -7,6 +7,7 @@ serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 
 # crates/
+startmc_downloader = { path = "crates/downloader" }
 startmc_mojapi = { path = "crates/mojapi" }
 
 [package]
@@ -26,3 +27,7 @@ startmc_mojapi.workspace = true
 serde.workspace = true
 toml = "0.8.23"
 dirs = "6.0.0"
+indicatif = "0.17.11"
+dialoguer = "0.11.0"
+startmc_downloader.workspace = true
+serde_json = "1.0.140"
