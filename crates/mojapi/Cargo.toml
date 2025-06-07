@@ -1,0 +1,10 @@
+[package]
+name = "startmc_mojapi"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+reqwest.workspace = true
+serde.workspace = true
+serde_with = "3.12.0"
+tokio.workspace = true
