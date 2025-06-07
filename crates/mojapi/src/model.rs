@@ -36,7 +36,8 @@ pub struct VersionManifestLatest {
 #[serde(rename_all = "camelCase")]
 pub struct VersionManifestVersion {
     pub id: String,
-    pub type_: VersionType,
+    #[serde(rename = "type")]
+    pub kind: VersionType,
     pub url: String,
 }
 

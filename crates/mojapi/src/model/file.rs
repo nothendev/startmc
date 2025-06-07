@@ -17,6 +17,6 @@ pub struct BaseMojapiFile {
 #[derive(Deserialize, Debug)]
 pub struct MojapiArtifact {
     #[serde(flatten)]
-    pub base: MojapiFile,
+    pub base: BaseMojapiFile,
     pub path: String,
 }

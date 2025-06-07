@@ -6,6 +6,7 @@ use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
 mod cli;
+mod config;
 
 #[tokio::main]
 async fn main() {
@@ -26,8 +27,14 @@ async fn main() {
     match cli.command {
         cli::Command::Version(version_command) => {
             debug!("get version {:?}", version_command);
-            let versions = startmc_mojapi::model::VersionManifestV2::fetch(&rq).await.unwrap();
-            let version = versions.versions.into_iter().find(|v| v.id == version_command.version).unwrap();
+            let versions = startmc_mojapi::model::VersionManifestV2::fetch(&rq)
+                .await
+                .unwrap();
+            let version = versions
+                .versions
+                .into_iter()
+                .find(|v| v.id == version_command.version)
+                .unwrap();
             let version = version.fetch(&rq).await.unwrap();
             println!("{:#?}", version);
         }

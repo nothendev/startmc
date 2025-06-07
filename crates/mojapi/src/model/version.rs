@@ -13,7 +13,8 @@ pub struct VersionPackage {
     pub libraries: Vec<VersionLibrary>,
     pub logging: VersionLogging,
     pub main_class: String,
-    pub type_: VersionType,
+    #[serde(rename = "type")]
+    pub kind: VersionType,
 }
 
 #[derive(Deserialize, Debug)]
@@ -31,14 +32,17 @@ pub struct VersionLogging {
 pub struct VersionLoggingClient {
     pub argument: String,
     pub file: MojapiFile,
-    pub type_: String,
+    #[serde(rename = "type")]
+    pub kind: String,
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct VersionAssetIndex {
     pub id: String,
     pub sha1: String,
     pub size: u64,
+    pub total_size: u64,
     pub url: String,
 }
 

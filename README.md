@@ -1,5 +1,7 @@
 # startmc
 
-A CLI tool for launching Minecraft servers and clients.
+A CLI tool for launching Minecraft clients.
 
 ## Features
+
+- List versions
