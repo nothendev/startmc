@@ -26,8 +26,13 @@ pub enum RuleAction {
 }
 
 #[derive(Deserialize, Debug)]
+pub struct RuleOs {
+    pub name: RuleOsKind
+}
+
+#[derive(Deserialize, Debug)]
 #[serde(rename_all = "lowercase")]
-pub enum RuleOs {
+pub enum RuleOsKind {
     Windows,
     Osx,
     Linux,
