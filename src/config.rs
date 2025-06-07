@@ -6,7 +6,9 @@ use std::{
 use reqwest::Url;
 use serde::Deserialize;
 use startmc_downloader::Download;
-use startmc_mojapi::model::{AssetIndex, VersionManifestV2, VersionPackage};
+use startmc_mojapi::model::{
+    AssetIndex, FabricVerisonGameLoader, VersionManifestV2, VersionPackage,
+};
 
 use crate::cache::{get_cached, get_cached_with_custom_path};
 
@@ -24,6 +26,50 @@ pub struct UnresolvedConfig {
     pub jvm_args: String,
     #[serde(default)]
     pub game_args: String,
+    #[serde(default)]
+    pub modloader: ModLoader,
+}
+
+#[derive(Deserialize, Debug, Default)]
+pub enum ModLoader {
+    #[default]
+    Vanilla,
+    Fabric {
+        version: String,
+    },
+}
+
+async fn get_fabric_launcher_meta(
+    game: &str,
+    loader: &str,
+    rq: &reqwest::Client,
+) -> Result<FabricVerisonGameLoader, std::io::Error> {
+    let manifest = get_cached(
+        &format!("https://meta.fabricmc.net/v2/versions/loader/{game}/{loader}"),
+        rq,
+    )
+    .await?;
+    let manifest: FabricVerisonGameLoader = serde_json::from_str(&manifest)?;
+    Ok(manifest)
+}
+
+impl ModLoader {
+    pub async fn get_main_class(
+        &self,
+        game: &str,
+        rq: &reqwest::Client,
+    ) -> Result<String, std::io::Error> {
+        Ok(match self {
+            ModLoader::Vanilla => "net.minecraft.client.main.Main".to_string(),
+            ModLoader::Fabric { version } => {
+                get_fabric_launcher_meta(game, version.as_str(), rq)
+                    .await?
+                    .launcher_meta
+                    .main_class
+                    .client
+            }
+        })
+    }
 }
 
 impl UnresolvedConfig {
@@ -98,6 +144,7 @@ impl UnresolvedConfig {
             minecraft_dir: self.minecraft_dir,
             jvm_args: self.jvm_args.split(' ').map(|s| s.to_string()).collect(),
             game_args: self.game_args.split(' ').map(|s| s.to_string()).collect(),
+            modloader: self.modloader,
         })
     }
 }
@@ -111,6 +158,7 @@ pub struct Config {
     pub assets_path: String,
     pub jvm_args: Vec<String>,
     pub game_args: Vec<String>,
+    pub modloader: ModLoader,
 }
 
 impl Config {
@@ -135,7 +183,11 @@ impl Config {
         ));
     }
 
-    pub fn download_libraries(&self, queue: &mut Vec<Download>) {
+    pub async fn download_libraries(
+        &self,
+        queue: &mut Vec<Download>,
+        rq: &reqwest::Client,
+    ) -> Result<(), std::io::Error> {
         let libs_path = Path::new(&self.libraries_path);
         for lib in &self.version.libraries {
             if !lib.check() {
@@ -167,6 +219,35 @@ impl Config {
             );
             queue.push(d);
         }
+
+        match self.modloader {
+            ModLoader::Vanilla => {}
+            ModLoader::Fabric { version } => {
+                let manifest = get_fabric_launcher_meta(&self.version.id, &version, rq).await?;
+                for lib in manifest
+                    .launcher_meta
+                    .libraries
+                    .client
+                    .iter()
+                    .chain(manifest.launcher_meta.libraries.common.iter())
+                {
+                    let path = libs_path.join(&lib.get_path());
+                    if path.try_exists().unwrap_or(false) {
+                        trace!("library {} already downloaded", lib.name);
+                        continue;
+                    }
+                    std::fs::create_dir_all(path.parent().unwrap())
+                        .expect("failed to create directory");
+                    queue.push(Download::new(
+                        &Url::parse(&lib.get_url()).unwrap(),
+                        path.to_str().unwrap(),
+                        Some(lib.name.to_string()),
+                    ));
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn download_assets(
