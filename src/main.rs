@@ -52,7 +52,7 @@ async fn main() -> Result<(), std::io::Error> {
             let mut queue: Vec<startmc_downloader::Download> = vec![];
 
             config.download_client(&mut queue);
-            config.download_libraries(&mut queue);
+            config.download_libraries(&mut queue, &rq).await?;
             config.download_assets(&mut queue, &rq).await?;
             if queue.len() > 0 {
                 println!(
@@ -70,14 +70,42 @@ async fn main() -> Result<(), std::io::Error> {
                 version = Color::Green.paint(&config.version.id)
             );
 
-            println!("{config:#?}");
+            let status = config.start(&rq).await?;
+            let code = status.code().unwrap_or(i32::MIN);
 
-            let status = config.start()?;
-            println!("{status:#?}");
+            println!(
+                "{cols} {exited} {status}",
+                exited = Color::Default.bold().paint("Minecraft finished"),
+                status = if code == 0 {
+                    Color::Green.paint("successfully").to_string()
+                } else {
+                    format!(
+                        "{} {}",
+                        Color::Red.paint("with exit code").to_string(),
+                        code
+                    )
+                }
+            );
         }
 
         cli::Cli::Sync(sync) => {
             println!("Sync: {sync:#?}");
+        }
+
+        cli::Cli::Upgrade(upgrade) => {
+            let config = {}; // TODO
+            match upgrade.kind {
+                cli::UpgradeKind::Mod => {
+                    println!(
+                        "{cols} {downloading} {amount} mods",
+                        downloading = Color::Default.bold().paint("Downloading"),
+                        amount = Color::Green.paint(upgrade.packages.len().to_string())
+                    );
+
+                    let mut queue: Vec<startmc_downloader::Download> = vec![];
+                }
+                cli::UpgradeKind::Resourcepack => println!("Upgrade: {upgrade:#?}"),
+            }
         }
     }
 

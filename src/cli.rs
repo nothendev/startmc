@@ -4,6 +4,7 @@ use clap::*;
 pub enum Cli {
     Run(String, RunOptions),
     Sync(CliSync),
+    Upgrade(CliUpgrade),
 }
 
 impl Cli {
@@ -74,6 +75,26 @@ impl Cli {
                             .action(ArgAction::Set),
                     ),
             )
+            .subcommand(
+                Command::new("upgrade")
+                    .short_flag('U')
+                    .long_flag("upgrade")
+                    .about("Download content onto a Minecraft instance")
+                    .arg(
+                        Arg::new("packages")
+                            .help("packages")
+                            .action(ArgAction::Append)
+                            .num_args(1..)
+                            .required(true),
+                    )
+                    .arg(
+                        Arg::new("resourcepack")
+                            .short('r')
+                            .long("resourcepack")
+                            .action(ArgAction::SetTrue)
+                            .help("Packages are resourcepacks, not mods"),
+                    ),
+            )
             .get_matches();
 
         match clap.subcommand() {
@@ -106,6 +127,38 @@ impl Cli {
                     upgrade,
                 })
             }
+            Some(("upgrade", matches)) => {
+                let packages = matches
+                    .get_many::<String>("packages")
+                    .unwrap()
+                    .map(|p| {
+                        if p.starts_with("https://") {
+                            UpgradePackage::Url(p.to_string())
+                        } else {
+                            if p.contains('=') {
+                                let mut split = p.split('=');
+                                let project = split.next().unwrap();
+                                let version = split.next().unwrap();
+                                UpgradePackage::Modrinth {
+                                    project: project.to_string(),
+                                    version: Some(version.to_string()),
+                                }
+                            } else {
+                                UpgradePackage::Modrinth {
+                                    project: p.to_string(),
+                                    version: None,
+                                }
+                            }
+                        }
+                    })
+                    .collect();
+                let kind = if matches.get_flag("resourcepack") {
+                    UpgradeKind::Resourcepack
+                } else {
+                    UpgradeKind::Mod
+                };
+                Cli::Upgrade(CliUpgrade { packages, kind })
+            }
             _ => unreachable!(),
         }
     }
@@ -128,4 +181,26 @@ pub enum SyncOperand {
     Search(Vec<String>),
     Install(Vec<String>),
     Nothing,
+}
+
+#[derive(Debug)]
+pub struct CliUpgrade {
+    pub packages: Vec<UpgradePackage>,
+    pub kind: UpgradeKind,
+}
+
+#[derive(Debug, Default)]
+pub enum UpgradeKind {
+    #[default]
+    Mod,
+    Resourcepack,
+}
+
+#[derive(Debug)]
+pub enum UpgradePackage {
+    Url(String),
+    Modrinth {
+        project: String,
+        version: Option<String>,
+    },
 }

@@ -1,3 +1,5 @@
+use crate::util::maven::MavenVersion;
+
 use super::*;
 
 #[derive(Deserialize, Debug)]
@@ -18,8 +20,10 @@ pub struct FabricVersion {
 #[derive(Deserialize, Debug)]
 pub struct FabricLauncherMeta {
     pub version: u8,
+    // for some god forsaken reason this is snake_case and mainClass is camelCase...
     pub min_java_version: u8,
     pub libraries: FabricLibraries,
+    #[serde(rename = "mainClass")]
     pub main_class: FabricMainClasses,
 }
 
@@ -38,32 +42,10 @@ pub struct FabricLibrary {
     pub size: u64,
 }
 
-impl FabricLibrary {
-    pub fn get_path(&self) -> String {
-        let temp = self.name.split(':').collect::<Vec<_>>();
-        let [.., name, version] = temp.as_slice() else {
-            panic!("invalid library name: {:?}", self.name);
-        };
-        format!(
-            "{}/{name}-{version}.jar",
-            self.name
-                .split(':')
-                .map(|it| it.split('.').collect::<Vec<_>>().join("/"))
-                .collect::<Vec<_>>()
-                .join("/")
-        )
-    }
-    pub fn get_url(&self) -> String {
-        format!(
-            "{}/{}",
-            self.url, // always = https://maven.fabricmc.net/ (note the trailing slash)
-            self.get_path()
-        )
-    }
-}
-
 #[derive(Deserialize, Debug)]
 pub struct FabricMainClasses {
     pub client: String,
     pub server: String,
 }
+
+pub const FABRIC_MAVEN: &str = "https://maven.fabricmc.net/";

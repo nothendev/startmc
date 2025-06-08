@@ -6,11 +6,12 @@ use std::{
 use reqwest::Url;
 use serde::Deserialize;
 use startmc_downloader::Download;
-use startmc_mojapi::model::{
-    AssetIndex, FabricVerisonGameLoader, VersionManifestV2, VersionPackage,
+use startmc_mojapi::{
+    model::{AssetIndex, FABRIC_MAVEN, FabricVerisonGameLoader, VersionManifestV2, VersionPackage},
+    util::maven::MavenVersion,
 };
 
-use crate::cache::{get_cached, get_cached_with_custom_path};
+use crate::cache::{use_cache_custom_path, use_cached};
 
 #[derive(Deserialize, Debug)]
 pub struct UnresolvedConfig {
@@ -28,9 +29,49 @@ pub struct UnresolvedConfig {
     pub game_args: String,
     #[serde(default)]
     pub modloader: ModLoader,
+    #[serde(default)]
+    pub log4j: Log4jConfig,
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub uuid: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum Log4jConfig {
+    Vanilla,
+    #[default]
+    None,
+    Custom(String),
+}
+
+impl Log4jConfig {
+    pub fn download(&self, base_path: &str, version: &VersionPackage, queue: &mut Vec<Download>) {
+        match self {
+            Log4jConfig::Vanilla => {
+                queue.push(Download::new(
+                    &Url::parse(&version.logging.client.file.base.url).unwrap(),
+                    &format!("{base_path}/log4j2.vanilla.xml"),
+                    None,
+                ));
+            }
+            Log4jConfig::None => {}
+            Log4jConfig::Custom(_) => {}
+        }
+    }
+
+    pub fn get_path(&self, base_path: &str) -> Option<String> {
+        match self {
+            Log4jConfig::Vanilla => Some(format!("{base_path}/log4j2.vanilla.xml")),
+            Log4jConfig::None => None,
+            Log4jConfig::Custom(path) => Some(path.to_string()),
+        }
+    }
+}
+
+#[derive(Deserialize, Debug, Default)]
+#[serde(rename_all = "lowercase")]
 pub enum ModLoader {
     #[default]
     Vanilla,
@@ -39,12 +80,12 @@ pub enum ModLoader {
     },
 }
 
-async fn get_fabric_launcher_meta(
+async fn use_fabric_launcher_meta(
     game: &str,
     loader: &str,
     rq: &reqwest::Client,
 ) -> Result<FabricVerisonGameLoader, std::io::Error> {
-    let manifest = get_cached(
+    let manifest = use_cached(
         &format!("https://meta.fabricmc.net/v2/versions/loader/{game}/{loader}"),
         rq,
     )
@@ -62,11 +103,44 @@ impl ModLoader {
         Ok(match self {
             ModLoader::Vanilla => "net.minecraft.client.main.Main".to_string(),
             ModLoader::Fabric { version } => {
-                get_fabric_launcher_meta(game, version.as_str(), rq)
+                use_fabric_launcher_meta(game, version.as_str(), rq)
                     .await?
                     .launcher_meta
                     .main_class
                     .client
+            }
+        })
+    }
+
+    pub async fn build_classpath(
+        &self,
+        libraries_path: &str,
+        game: &str,
+        rq: &reqwest::Client,
+    ) -> Result<Vec<String>, std::io::Error> {
+        Ok(match self {
+            ModLoader::Vanilla => vec![],
+            ModLoader::Fabric { version } => {
+                let manifest = use_fabric_launcher_meta(game, version.as_str(), rq).await?;
+                manifest
+                    .launcher_meta
+                    .libraries
+                    .client
+                    .iter()
+                    .chain(manifest.launcher_meta.libraries.common.iter())
+                    .map(|it| MavenVersion::parse(&it.name).expect("invalid library name"))
+                    .chain([
+                        MavenVersion::parse(&manifest.loader.maven).expect("invalid loader name"),
+                        MavenVersion::parse(&manifest.intermediary.maven)
+                            .expect("invalid intermediary name"),
+                        MavenVersion {
+                            group: "net.minecrell".to_string(),
+                            artifact: "terminalconsoleappender".to_string(),
+                            version: "1.3.0".to_string(),
+                        },
+                    ])
+                    .map(|l| format!("{}/{}", libraries_path, l.get_path()))
+                    .collect()
             }
         })
     }
@@ -80,6 +154,10 @@ impl UnresolvedConfig {
     }
 
     pub fn find(instance: &str) -> Result<Self, std::io::Error> {
+        if instance.ends_with(".toml") {
+            return Self::read(Path::new(instance));
+        }
+
         let paths = vec![
             dirs::config_dir()
                 .expect("config directory not found")
@@ -102,9 +180,9 @@ impl UnresolvedConfig {
     pub async fn resolve(self, rq: &reqwest::Client) -> Result<Config, std::io::Error> {
         Ok(Config {
             version: serde_json::from_str::<VersionPackage>(
-                &get_cached(
+                &use_cached(
                     &serde_json::from_str::<VersionManifestV2>(
-                        &get_cached(
+                        &use_cached(
                             "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json",
                             rq,
                         )
@@ -145,6 +223,9 @@ impl UnresolvedConfig {
             jvm_args: self.jvm_args.split(' ').map(|s| s.to_string()).collect(),
             game_args: self.game_args.split(' ').map(|s| s.to_string()).collect(),
             modloader: self.modloader,
+            log4j: self.log4j,
+            username: self.username,
+            uuid: self.uuid,
         })
     }
 }
@@ -159,6 +240,9 @@ pub struct Config {
     pub jvm_args: Vec<String>,
     pub game_args: Vec<String>,
     pub modloader: ModLoader,
+    pub log4j: Log4jConfig,
+    pub username: Option<String>,
+    pub uuid: Option<String>,
 }
 
 impl Config {
@@ -220,28 +304,46 @@ impl Config {
             queue.push(d);
         }
 
-        match self.modloader {
+        self.log4j
+            .download(&self.libraries_path, &self.version, queue);
+
+        match &self.modloader {
             ModLoader::Vanilla => {}
             ModLoader::Fabric { version } => {
-                let manifest = get_fabric_launcher_meta(&self.version.id, &version, rq).await?;
+                let manifest = use_fabric_launcher_meta(&self.version.id, &version, rq).await?;
                 for lib in manifest
                     .launcher_meta
                     .libraries
                     .client
                     .iter()
                     .chain(manifest.launcher_meta.libraries.common.iter())
+                    .map(|it| MavenVersion::parse(&it.name).expect("invalid library name"))
+                    .chain([
+                        MavenVersion::parse(&manifest.loader.maven).expect("invalid loader name"),
+                        MavenVersion::parse(&manifest.intermediary.maven)
+                            .expect("invalid intermediary name"),
+                        MavenVersion {
+                            group: "net.minecrell".to_string(),
+                            artifact: "terminalconsoleappender".to_string(),
+                            version: "1.3.0".to_string(),
+                        },
+                    ])
                 {
                     let path = libs_path.join(&lib.get_path());
                     if path.try_exists().unwrap_or(false) {
-                        trace!("library {} already downloaded", lib.name);
+                        trace!("library {} already downloaded", lib);
                         continue;
                     }
                     std::fs::create_dir_all(path.parent().unwrap())
                         .expect("failed to create directory");
                     queue.push(Download::new(
-                        &Url::parse(&lib.get_url()).unwrap(),
+                        &Url::parse(&lib.get_url(if lib.group == "net.minecrell" {
+                            "https://repo1.maven.org/maven2"
+                        } else {
+                            FABRIC_MAVEN
+                        })).unwrap(),
                         path.to_str().unwrap(),
-                        Some(lib.name.to_string()),
+                        Some(lib.to_string()),
                     ));
                 }
             }
@@ -259,7 +361,7 @@ impl Config {
             .join("indexes")
             .join(&self.version.asset_index.id);
         let asset_index =
-            get_cached_with_custom_path(&self.version.asset_index.url, &rq, &index_path).await?;
+            use_cache_custom_path(&self.version.asset_index.url, &rq, &index_path).await?;
         let asset_index: AssetIndex = serde_json::from_str(&asset_index)?;
         for asset in asset_index.objects.values() {
             let path = Path::new(&self.assets_path)
@@ -285,26 +387,54 @@ impl Config {
         Ok(())
     }
 
-    pub fn start(&self) -> Result<ExitStatus, std::io::Error> {
+    pub async fn start(&self, rq: &reqwest::Client) -> Result<ExitStatus, std::io::Error> {
         let mut cmd =
             std::process::Command::new(Path::new(&self.java_path).join("bin").join("java"));
+        let modloader_cp = self
+            .modloader
+            .build_classpath(&self.libraries_path, &self.version.id, rq)
+            .await?;
         cmd.current_dir(&self.minecraft_dir);
         cmd.arg("-cp");
         cmd.arg(
             [self.get_client_jar_path().to_str().unwrap().to_string()]
                 .into_iter()
-                .chain(self.version.libraries.iter().map(|l| {
-                    format!(
-                        "{}/{}",
-                        self.libraries_path,
-                        l.downloads.artifact.path.as_str()
-                    )
-                }))
+                .chain(modloader_cp)
+                .chain(
+                    self.version
+                        .libraries
+                        .iter()
+                        .filter(|l| {
+                            l.check()
+                                && if matches!(self.modloader, ModLoader::Fabric { .. }) {
+                                    !l.name.contains("ow2.asm:asm")
+                                } else {
+                                    true
+                                }
+                        })
+                        .map(|l| {
+                            format!(
+                                "{}/{}",
+                                self.libraries_path,
+                                l.downloads.artifact.path.as_str()
+                            )
+                        }),
+                )
                 .collect::<Vec<_>>()
-                .join(":"),
+                .join(if std::path::MAIN_SEPARATOR == '\\' {
+                    ";" // windows
+                } else {
+                    ":" // anywhere else (mac, linux)
+                }),
         );
-        cmd.args(&self.jvm_args);
-        cmd.arg(self.version.main_class.as_str());
+        if self.jvm_args.len() > 0 {
+            cmd.args(&self.jvm_args);
+        }
+        let log4j_path = self.log4j.get_path(&self.libraries_path);
+        if let Some(path) = log4j_path {
+            cmd.arg(format!("-Dlog4j.configurationFile={path}"));
+        }
+        cmd.arg(self.modloader.get_main_class(&self.version.id, rq).await?);
         cmd.arg("--version");
         cmd.arg(&self.version.id);
         cmd.arg("--gameDir");
@@ -314,15 +444,22 @@ impl Config {
         cmd.arg("--assetIndex");
         cmd.arg(&self.version.asset_index.id);
         cmd.arg("--uuid");
-        cmd.arg("12345678-1234-1234-1234-123456789012");
+        cmd.arg(self.uuid.as_deref().unwrap_or("12345678-1234-1234-1234-123456789012"));
+        if let Some(username) = self.username.as_deref() {
+            cmd.arg("--username");
+            cmd.arg(username);
+        }
         cmd.arg("--accessToken");
         cmd.arg("0");
         cmd.arg("--userType");
         cmd.arg("msa");
         cmd.arg("--versionType");
         cmd.arg("release");
-        cmd.args(&self.game_args);
-        println!("{:#?}", cmd.get_args());
-        cmd.status()
+        if self.game_args.len() > 0 {
+            cmd.args(&self.game_args);
+        }
+
+        let mut child = cmd.spawn()?;
+        child.wait()
     }
 }

@@ -1,4 +1,4 @@
-pub async fn get_cached(url: &str, rq: &reqwest::Client) -> Result<String, std::io::Error> {
+pub async fn use_cached(url: &str, rq: &reqwest::Client) -> Result<String, std::io::Error> {
     let path = get_cached_path(url);
     if path.exists() {
         let contents = std::fs::read_to_string(path)?;
@@ -33,7 +33,7 @@ pub fn get_cached_path(url: &str) -> std::path::PathBuf {
     path
 }
 
-pub async fn get_cached_with_custom_path(
+pub async fn use_cache_custom_path(
     url: &str,
     rq: &reqwest::Client,
     path: &std::path::Path,
