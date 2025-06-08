@@ -14,6 +14,17 @@ startmc_mojapi = { path = "crates/mojapi" }
 name = "startmc"
 version = "0.1.0"
 edition = "2024"
+homepage = "https://codeberg.org/noth/startmc"
+repository = "https://codeberg.org/noth/startmc"
+license = "MIT"
+description = "CLI for running Minecraft clients"
+keywords = ["minecraft", "client", "cli"]
+categories = ["command-line-utilities"]
+readme = "README.md"
+
+[[bin]]
+name = "startmc"
+path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
@@ -25,7 +36,7 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter", "std"] }
 startmc_mojapi.workspace = true
 serde.workspace = true
-toml = "0.8.23"
+toml = { version = "0.8.23", features = ["display"] }
 dirs = "6.0.0"
 indicatif = "0.17.11"
 dialoguer = "0.11.0"
