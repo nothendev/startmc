@@ -1,7 +1,10 @@
 #[macro_use]
 extern crate tracing;
 
+use std::path::Path;
+
 use nu_ansi_term::Color;
+use reqwest::Url;
 use startmc_downloader::DownloaderBuilder;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
@@ -9,6 +12,7 @@ use tracing_subscriber::EnvFilter;
 mod cache;
 mod cli;
 mod config;
+mod sync;
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
@@ -89,12 +93,17 @@ async fn main() -> Result<(), std::io::Error> {
         }
 
         cli::Cli::Sync(sync) => {
+            let unresolved =
+                config::UnresolvedConfig::find(&sync.instance).expect("config not found");
             println!("Sync: {sync:#?}");
+            // TODO: modrinth misery
         }
 
         cli::Cli::Upgrade(upgrade) => {
-            let config = {}; // TODO
-            match upgrade.kind {
+            let config =
+                config::UnresolvedConfig::find(&upgrade.instance).expect("config not found");
+            let mut queue: Vec<startmc_downloader::Download> = vec![];
+            let dest = match &upgrade.kind {
                 cli::UpgradeKind::Mod => {
                     println!(
                         "{cols} {downloading} {amount} mods",
@@ -102,9 +111,47 @@ async fn main() -> Result<(), std::io::Error> {
                         amount = Color::Green.paint(upgrade.packages.len().to_string())
                     );
 
-                    let mut queue: Vec<startmc_downloader::Download> = vec![];
+                    Path::new(&config.minecraft_dir).join("mods")
                 }
-                cli::UpgradeKind::Resourcepack => println!("Upgrade: {upgrade:#?}"),
+                cli::UpgradeKind::Resourcepack => {
+                    println!(
+                        "{cols} {downloading} {amount} resourcepacks",
+                        downloading = Color::Default.bold().paint("Downloading"),
+                        amount = Color::Green.paint(upgrade.packages.len().to_string())
+                    );
+
+                    Path::new(&config.minecraft_dir).join("resourcepacks")
+                }
+            };
+
+            for package in &upgrade.packages {
+                queue.push(startmc_downloader::Download::new(
+                    &Url::parse(&package).unwrap(),
+                    dest.join(package.split('/').last().unwrap())
+                        .to_str()
+                        .unwrap(),
+                    None,
+                ));
+            }
+
+            let downloader = DownloaderBuilder::new().concurrent_downloads(10).build();
+            downloader.download(&queue).await;
+
+            match &upgrade.kind {
+                cli::UpgradeKind::Mod => {
+                    println!(
+                        "{cols} {installed} {amount} mods",
+                        installed = Color::Default.bold().paint("Finished downloading"),
+                        amount = Color::Green.paint(upgrade.packages.len().to_string())
+                    );
+                }
+                cli::UpgradeKind::Resourcepack => {
+                    println!(
+                        "{cols} {installed} {amount} resourcepacks",
+                        installed = Color::Default.bold().paint("Finished downloading"),
+                        amount = Color::Green.paint(upgrade.packages.len().to_string())
+                    );
+                }
             }
         }
     }

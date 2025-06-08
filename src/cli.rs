@@ -13,19 +13,17 @@ impl Cli {
             .version(env!("CARGO_PKG_VERSION"))
             .author(env!("CARGO_PKG_AUTHORS"))
             .about("Start Minecraft")
-            .arg_required_else_help(true)
-            .subcommand_required(true)
+            .arg(
+                Arg::new("instance")
+                    .help("Instance name")
+                    .default_value("default")
+                    .action(ArgAction::Set),
+            )
             .subcommand(
                 Command::new("run")
                     .short_flag('R')
                     .long_flag("run")
                     .about("Run a Minecraft instance")
-                    .arg(
-                        Arg::new("instance")
-                            .help("Instance name")
-                            .default_value("default")
-                            .action(ArgAction::Set),
-                    )
                     .arg(
                         Arg::new("username")
                             .help("Username")
@@ -97,16 +95,20 @@ impl Cli {
             )
             .get_matches();
 
+        let instance = clap.get_one::<String>("instance").unwrap().to_string();
         match clap.subcommand() {
-            Some(("run", matches)) => {
-                let instance = matches.get_one::<String>("instance").unwrap();
-                Cli::Run(
-                    instance.to_string(),
-                    RunOptions {
-                        username: matches.get_one::<String>("username").unwrap().to_string(),
-                    },
-                )
-            }
+            Some(("run", matches)) => Cli::Run(
+                instance,
+                RunOptions {
+                    username: matches.get_one::<String>("username").unwrap().to_string(),
+                },
+            ),
+            None => Cli::Run(
+                instance,
+                RunOptions {
+                    username: "Steve".to_string(),
+                },
+            ),
             Some(("sync", matches)) => {
                 let refresh = matches.get_flag("refresh");
                 let upgrade = matches.get_flag("upgrade");
@@ -114,6 +116,7 @@ impl Cli {
                 let package = matches.get_many::<String>("package");
 
                 Cli::Sync(CliSync {
+                    instance,
                     operand: match (search, package) {
                         (None, Some(packages)) => {
                             SyncOperand::Install(packages.map(|p| p.to_string()).collect())
@@ -131,33 +134,18 @@ impl Cli {
                 let packages = matches
                     .get_many::<String>("packages")
                     .unwrap()
-                    .map(|p| {
-                        if p.starts_with("https://") {
-                            UpgradePackage::Url(p.to_string())
-                        } else {
-                            if p.contains('=') {
-                                let mut split = p.split('=');
-                                let project = split.next().unwrap();
-                                let version = split.next().unwrap();
-                                UpgradePackage::Modrinth {
-                                    project: project.to_string(),
-                                    version: Some(version.to_string()),
-                                }
-                            } else {
-                                UpgradePackage::Modrinth {
-                                    project: p.to_string(),
-                                    version: None,
-                                }
-                            }
-                        }
-                    })
+                    .map(|p| p.to_string())
                     .collect();
                 let kind = if matches.get_flag("resourcepack") {
                     UpgradeKind::Resourcepack
                 } else {
                     UpgradeKind::Mod
                 };
-                Cli::Upgrade(CliUpgrade { packages, kind })
+                Cli::Upgrade(CliUpgrade {
+                    instance,
+                    packages,
+                    kind,
+                })
             }
             _ => unreachable!(),
         }
@@ -171,6 +159,7 @@ pub struct RunOptions {
 
 #[derive(Debug)]
 pub struct CliSync {
+    pub instance: String,
     pub refresh: bool,
     pub upgrade: bool,
     pub operand: SyncOperand,
@@ -185,7 +174,8 @@ pub enum SyncOperand {
 
 #[derive(Debug)]
 pub struct CliUpgrade {
-    pub packages: Vec<UpgradePackage>,
+    pub instance: String,
+    pub packages: Vec<String>,
     pub kind: UpgradeKind,
 }
 
@@ -194,13 +184,4 @@ pub enum UpgradeKind {
     #[default]
     Mod,
     Resourcepack,
-}
-
-#[derive(Debug)]
-pub enum UpgradePackage {
-    Url(String),
-    Modrinth {
-        project: String,
-        version: Option<String>,
-    },
 }
