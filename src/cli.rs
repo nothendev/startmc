@@ -2,7 +2,7 @@ use clap::*;
 
 #[derive(Debug)]
 pub enum Cli {
-    Run(String, RunOptions),
+    Run(String),
     Sync(CliSync),
     Upgrade(CliUpgrade),
 }
@@ -24,18 +24,6 @@ impl Cli {
                     .short_flag('R')
                     .long_flag("run")
                     .about("Run a Minecraft instance")
-                    .arg(
-                        Arg::new("username")
-                            .help("Username")
-                            .action(ArgAction::Set)
-                            .default_value("Steve"),
-                    )
-                    .arg(
-                        Arg::new("uuid")
-                            .help("UUID")
-                            .action(ArgAction::Set)
-                            .default_value("12345678-1234-1234-1234-123456789012"),
-                    ),
             )
             .subcommand(
                 Command::new("sync")
@@ -97,18 +85,8 @@ impl Cli {
 
         let instance = clap.get_one::<String>("instance").unwrap().to_string();
         match clap.subcommand() {
-            Some(("run", matches)) => Cli::Run(
-                instance,
-                RunOptions {
-                    username: matches.get_one::<String>("username").unwrap().to_string(),
-                },
-            ),
-            None => Cli::Run(
-                instance,
-                RunOptions {
-                    username: "Steve".to_string(),
-                },
-            ),
+            Some(("run", ..)) => Cli::Run(instance),
+            None => Cli::Run(instance),
             Some(("sync", matches)) => {
                 let refresh = matches.get_flag("refresh");
                 let upgrade = matches.get_flag("upgrade");
@@ -150,11 +128,6 @@ impl Cli {
             _ => unreachable!(),
         }
     }
-}
-
-#[derive(Debug)]
-pub struct RunOptions {
-    pub username: String,
 }
 
 #[derive(Debug)]

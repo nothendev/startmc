@@ -30,7 +30,7 @@ async fn main() -> Result<(), std::io::Error> {
 
     let cols = Color::Blue.bold().paint("::");
     match cli {
-        cli::Cli::Run(instance, opts) => {
+        cli::Cli::Run(instance) => {
             let unresolved = config::UnresolvedConfig::find(&instance).expect("config not found");
             println!(
                 "{cols} {running} {instance}",
@@ -95,8 +95,12 @@ async fn main() -> Result<(), std::io::Error> {
         cli::Cli::Sync(sync) => {
             let unresolved =
                 config::UnresolvedConfig::find(&sync.instance).expect("config not found");
-            println!("Sync: {sync:#?}");
-            // TODO: modrinth misery
+            if sync.refresh {
+                // TODO: refresh content index
+            }
+            if sync.upgrade {
+                // TODO: upgrade content
+            }
         }
 
         cli::Cli::Upgrade(upgrade) => {
@@ -111,7 +115,7 @@ async fn main() -> Result<(), std::io::Error> {
                         amount = Color::Green.paint(upgrade.packages.len().to_string())
                     );
 
-                    Path::new(&config.minecraft_dir).join("mods")
+                    Path::new(&config.minecraft.directory).join("mods")
                 }
                 cli::UpgradeKind::Resourcepack => {
                     println!(
@@ -120,7 +124,7 @@ async fn main() -> Result<(), std::io::Error> {
                         amount = Color::Green.paint(upgrade.packages.len().to_string())
                     );
 
-                    Path::new(&config.minecraft_dir).join("resourcepacks")
+                    Path::new(&config.minecraft.directory).join("resourcepacks")
                 }
             };
 

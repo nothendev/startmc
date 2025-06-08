@@ -1,5 +1,3 @@
-use crate::util::maven::MavenVersion;
-
 use super::*;
 
 #[derive(Deserialize, Debug)]

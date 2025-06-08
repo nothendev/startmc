@@ -40,6 +40,26 @@ Update all your installed mods:
 startmc -Syu
 ```
 
+## Installation
+
+```sh
+git clone https://github.com/startmc/startmc.git
+cd startmc
+cargo install --path .
+```
+
+### Cross-compiling to Windows from Linux
+
+1. Install mingw-w64-gcc (this is for Arch Linux, for other distros it might be different)
+```sh
+sudo pacman -S mingw-w64-gcc
+```
+2. Cross-compile!
+```sh
+cargo build --target x86_64-pc-windows-gnu --release
+```
+3. The binary should be in `target/x86_64-pc-windows-gnu/release/startmc.exe`.
+
 ## Credits
 
 - [wiki.vg](https://minecraft.wiki/w/Minecraft_Wiki:Projects/wiki.vg_merge) and all its contibutions for documenting, like, the entire asset, library, etc download and launch progress.

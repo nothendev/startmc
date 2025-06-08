@@ -14,21 +14,43 @@ use startmc_mojapi::{
 use crate::cache::{use_cache_custom_path, use_cached};
 
 #[derive(Deserialize, Debug)]
-pub struct UnresolvedConfig {
+pub struct MinecraftConfig {
     pub version: String,
+    pub directory: String,
     #[serde(default)]
-    pub libraries_path: Option<String>,
+    pub fabric: Option<FabricConfig>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct FabricConfig {
+    pub version: String,
+}
+
+#[derive(Deserialize, Debug, Default)]
+pub struct PathsConfig {
     #[serde(default)]
-    pub java_path: Option<String>,
+    pub libraries: Option<String>,
     #[serde(default)]
-    pub assets_path: Option<String>,
-    pub minecraft_dir: String,
+    pub assets: Option<String>,
     #[serde(default)]
-    pub jvm_args: String,
+    pub java: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Default)]
+pub struct ArgsConfig {
     #[serde(default)]
-    pub game_args: String,
+    pub jvm: String,
     #[serde(default)]
-    pub modloader: ModLoader,
+    pub game: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct UnresolvedConfig {
+    pub minecraft: MinecraftConfig,
+    #[serde(default)]
+    pub paths: PathsConfig,
+    #[serde(default)]
+    pub args: ArgsConfig,
     #[serde(default)]
     pub log4j: Log4jConfig,
     #[serde(default)]
@@ -70,14 +92,10 @@ impl Log4jConfig {
     }
 }
 
-#[derive(Deserialize, Debug, Default)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug)]
 pub enum ModLoader {
-    #[default]
     Vanilla,
-    Fabric {
-        version: String,
-    },
+    Fabric { version: String },
 }
 
 async fn use_fabric_launcher_meta(
@@ -191,7 +209,7 @@ impl UnresolvedConfig {
                     .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
                     .versions
                     .into_iter()
-                    .find(|v| v.id == self.version)
+                    .find(|v| v.id == self.minecraft.version)
                     .unwrap()
                     .url,
                     rq,
@@ -199,11 +217,11 @@ impl UnresolvedConfig {
                 .await?,
             )
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?,
-            java_path: self.java_path.unwrap_or_else(|| {
+            java_path: self.paths.java.unwrap_or_else(|| {
                 std::env::var("JAVA_HOME")
                     .expect("JAVA_HOME not set, and java_path is not specified in config")
             }),
-            libraries_path: self.libraries_path.unwrap_or_else(|| {
+            libraries_path: self.paths.libraries.unwrap_or_else(|| {
                 let path = dirs::data_dir()
                     .expect("data directory not found")
                     .join("startmc/libraries");
@@ -212,17 +230,23 @@ impl UnresolvedConfig {
                     .expect("libraries path is not utf-8")
                     .to_string()
             }),
-            assets_path: self.assets_path.unwrap_or_else(|| {
+            assets_path: self.paths.assets.unwrap_or_else(|| {
                 let path = dirs::data_dir()
                     .expect("data directory not found")
                     .join("startmc/assets");
                 std::fs::create_dir_all(&path).expect("failed to create assets directory");
                 path.to_str().expect("assets path is not utf-8").to_string()
             }),
-            minecraft_dir: self.minecraft_dir,
-            jvm_args: self.jvm_args.split(' ').map(|s| s.to_string()).collect(),
-            game_args: self.game_args.split(' ').map(|s| s.to_string()).collect(),
-            modloader: self.modloader,
+            minecraft_dir: self.minecraft.directory,
+            jvm_args: self.args.jvm.split(' ').map(|s| s.to_string()).collect(),
+            game_args: self.args.game.split(' ').map(|s| s.to_string()).collect(),
+            modloader: if let Some(fabric) = self.minecraft.fabric {
+                ModLoader::Fabric {
+                    version: fabric.version,
+                }
+            } else {
+                ModLoader::Vanilla
+            },
             log4j: self.log4j,
             username: self.username,
             uuid: self.uuid,
@@ -341,7 +365,8 @@ impl Config {
                             "https://repo1.maven.org/maven2"
                         } else {
                             FABRIC_MAVEN
-                        })).unwrap(),
+                        }))
+                        .unwrap(),
                         path.to_str().unwrap(),
                         Some(lib.to_string()),
                     ));
@@ -444,7 +469,11 @@ impl Config {
         cmd.arg("--assetIndex");
         cmd.arg(&self.version.asset_index.id);
         cmd.arg("--uuid");
-        cmd.arg(self.uuid.as_deref().unwrap_or("12345678-1234-1234-1234-123456789012"));
+        cmd.arg(
+            self.uuid
+                .as_deref()
+                .unwrap_or("12345678-1234-1234-1234-123456789012"),
+        );
         if let Some(username) = self.username.as_deref() {
             cmd.arg("--username");
             cmd.arg(username);
