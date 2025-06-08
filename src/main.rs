@@ -129,13 +129,21 @@ async fn main() -> Result<(), std::io::Error> {
             };
 
             for package in &upgrade.packages {
-                queue.push(startmc_downloader::Download::new(
-                    &Url::parse(&package).unwrap(),
-                    dest.join(package.split('/').last().unwrap())
-                        .to_str()
-                        .unwrap(),
-                    None,
-                ));
+                match Url::parse(&package) {
+                    Ok(url) => {
+                        queue.push(startmc_downloader::Download::new(
+                            &url,
+                            dest.join(package.split('/').last().unwrap())
+                                .to_str()
+                                .unwrap(),
+                            None,
+                        ));
+                    }
+                    Err(_) => {
+                        let path = Path::new(&package);
+                        std::fs::copy(path, dest.join(path.file_name().unwrap())).unwrap();
+                    }
+                }
             }
 
             let downloader = DownloaderBuilder::new().concurrent_downloads(10).build();
