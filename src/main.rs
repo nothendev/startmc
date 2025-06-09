@@ -96,7 +96,7 @@ async fn main() -> color_eyre::Result<()> {
         cli::Cli::Sync(sync) => {
             let (path, unresolved) =
                 config::UnresolvedConfig::find_with_path(&sync.instance).context("config not found")?;
-            let client = sync::Sync::new(&path)?;
+            let mut client = sync::Sync::new(&path)?;
 
             if sync.refresh {
                 println!("{cols} {refreshing}", refreshing = Color::Default.bold().paint("Refreshing content index..."));
