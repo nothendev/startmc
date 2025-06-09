@@ -5,6 +5,43 @@ pub enum Cli {
     Run(String),
     Sync(CliSync),
     Upgrade(CliUpgrade),
+    Remove(CliRemove),
+}
+
+#[derive(Debug)]
+pub struct CliSync {
+    pub instance: String,
+    pub refresh: bool,
+    pub upgrade: bool,
+    pub operand: SyncOperand,
+}
+
+#[derive(Debug)]
+pub enum SyncOperand {
+    Search(Vec<String>),
+    Install(Vec<String>),
+    Nothing,
+}
+
+#[derive(Debug)]
+pub struct CliUpgrade {
+    pub instance: String,
+    pub packages: Vec<String>,
+    pub kind: UpgradeKind,
+}
+
+#[derive(Debug, Default)]
+pub enum UpgradeKind {
+    #[default]
+    Mod,
+    Resourcepack,
+}
+
+#[derive(Debug)]
+pub struct CliRemove {
+    pub instance: String,
+    pub disable: bool,
+    pub packages: Vec<String>,
 }
 
 impl Cli {
@@ -18,12 +55,6 @@ impl Cli {
                     .help("Instance name")
                     .default_value("default")
                     .action(ArgAction::Set),
-            )
-            .subcommand(
-                Command::new("run")
-                    .short_flag('R')
-                    .long_flag("run")
-                    .about("Run a Minecraft instance")
             )
             .subcommand(
                 Command::new("sync")
@@ -81,11 +112,30 @@ impl Cli {
                             .help("Packages are resourcepacks, not mods"),
                     ),
             )
+            .subcommand(
+                Command::new("remove")
+                    .short_flag('R')
+                    .long_flag("remove")
+                    .about("Remove some content from a Minecraft instance")
+                    .arg(
+                        Arg::new("disable")
+                            .short('d')
+                            .long("disable")
+                            .action(ArgAction::SetTrue)
+                            .help("Disable, not remove"),
+                    )
+                    .arg(
+                        Arg::new("packages")
+                            .help("packages")
+                            .action(ArgAction::Append)
+                            .num_args(1..)
+                            .required(true),
+                    ),
+            )
             .get_matches();
 
         let instance = clap.get_one::<String>("instance").unwrap().to_string();
         match clap.subcommand() {
-            Some(("run", ..)) => Cli::Run(instance),
             None => Cli::Run(instance),
             Some(("sync", matches)) => {
                 let refresh = matches.get_flag("refresh");
@@ -125,36 +175,20 @@ impl Cli {
                     kind,
                 })
             }
+            Some(("remove", matches)) => {
+                let disable = matches.get_flag("disable");
+                let packages = matches
+                    .get_many::<String>("packages")
+                    .unwrap()
+                    .map(|p| p.to_string())
+                    .collect();
+                Cli::Remove(CliRemove {
+                    instance,
+                    disable,
+                    packages,
+                })
+            }
             _ => unreachable!(),
         }
     }
-}
-
-#[derive(Debug)]
-pub struct CliSync {
-    pub instance: String,
-    pub refresh: bool,
-    pub upgrade: bool,
-    pub operand: SyncOperand,
-}
-
-#[derive(Debug)]
-pub enum SyncOperand {
-    Search(Vec<String>),
-    Install(Vec<String>),
-    Nothing,
-}
-
-#[derive(Debug)]
-pub struct CliUpgrade {
-    pub instance: String,
-    pub packages: Vec<String>,
-    pub kind: UpgradeKind,
-}
-
-#[derive(Debug, Default)]
-pub enum UpgradeKind {
-    #[default]
-    Mod,
-    Resourcepack,
 }

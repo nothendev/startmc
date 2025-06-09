@@ -1,19 +1,14 @@
-pub async fn use_cached(url: &str, rq: &reqwest::Client) -> Result<String, std::io::Error> {
+use color_eyre::Result;
+
+pub async fn use_cached(url: &str) -> Result<String> {
     let path = get_cached_path(url);
     if path.exists() {
         let contents = std::fs::read_to_string(path)?;
         Ok(contents)
     } else {
         std::fs::create_dir_all(path.parent().expect("path parent"))?;
-        let res = rq
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-        let contents = res
-            .text()
-            .await
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let res = reqwest::get(url).await?;
+        let contents = res.text().await?;
         std::fs::write(path, &contents)?;
         Ok(contents)
     }
@@ -35,24 +30,21 @@ pub fn get_cached_path(url: &str) -> std::path::PathBuf {
 
 pub async fn use_cache_custom_path(
     url: &str,
-    rq: &reqwest::Client,
     path: &std::path::Path,
-) -> Result<String, std::io::Error> {
+) -> Result<String> {
     if path.exists() {
         let contents = std::fs::read_to_string(path)?;
         Ok(contents)
     } else {
         std::fs::create_dir_all(path.parent().expect("path parent"))?;
-        let res = rq
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-        let contents = res
-            .text()
-            .await
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let res = reqwest::get(url).await?;
+        let contents = res.text().await?;
         std::fs::write(path, &contents)?;
         Ok(contents)
     }
+}
+
+pub async fn use_cached_json<T: serde::de::DeserializeOwned>(url: &str) -> Result<T> {
+    let contents = use_cached(url).await?;
+    Ok(serde_json::from_str(&contents)?)
 }

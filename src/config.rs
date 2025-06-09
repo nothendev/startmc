@@ -3,6 +3,7 @@ use std::{
     process::ExitStatus,
 };
 
+use color_eyre::{eyre::{eyre, ContextCompat}, Result};
 use reqwest::Url;
 use serde::Deserialize;
 use startmc_downloader::Download;
@@ -11,7 +12,7 @@ use startmc_mojapi::{
     util::maven::MavenVersion,
 };
 
-use crate::cache::{use_cache_custom_path, use_cached};
+use crate::cache::{use_cache_custom_path, use_cached, use_cached_json};
 
 #[derive(Deserialize, Debug)]
 pub struct MinecraftConfig {
@@ -44,6 +45,15 @@ pub struct ArgsConfig {
     pub game: String,
 }
 
+#[derive(Deserialize, Debug, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum Log4jConfig {
+    Vanilla,
+    #[default]
+    None,
+    Custom(String),
+}
+
 #[derive(Deserialize, Debug)]
 pub struct UnresolvedConfig {
     pub minecraft: MinecraftConfig,
@@ -57,15 +67,6 @@ pub struct UnresolvedConfig {
     pub username: Option<String>,
     #[serde(default)]
     pub uuid: Option<String>,
-}
-
-#[derive(Deserialize, Debug, Default)]
-#[serde(rename_all = "kebab-case")]
-pub enum Log4jConfig {
-    Vanilla,
-    #[default]
-    None,
-    Custom(String),
 }
 
 impl Log4jConfig {
@@ -98,30 +99,21 @@ pub enum ModLoader {
     Fabric { version: String },
 }
 
-async fn use_fabric_launcher_meta(
-    game: &str,
-    loader: &str,
-    rq: &reqwest::Client,
-) -> Result<FabricVerisonGameLoader, std::io::Error> {
-    let manifest = use_cached(
-        &format!("https://meta.fabricmc.net/v2/versions/loader/{game}/{loader}"),
-        rq,
-    )
+async fn use_fabric_launcher_meta(game: &str, loader: &str) -> Result<FabricVerisonGameLoader> {
+    let manifest = use_cached(&format!(
+        "https://meta.fabricmc.net/v2/versions/loader/{game}/{loader}"
+    ))
     .await?;
     let manifest: FabricVerisonGameLoader = serde_json::from_str(&manifest)?;
     Ok(manifest)
 }
 
 impl ModLoader {
-    pub async fn get_main_class(
-        &self,
-        game: &str,
-        rq: &reqwest::Client,
-    ) -> Result<String, std::io::Error> {
+    pub async fn get_main_class(&self, game_version: &VersionPackage) -> Result<String> {
         Ok(match self {
-            ModLoader::Vanilla => "net.minecraft.client.main.Main".to_string(),
+            ModLoader::Vanilla => game_version.main_class.to_string(),
             ModLoader::Fabric { version } => {
-                use_fabric_launcher_meta(game, version.as_str(), rq)
+                use_fabric_launcher_meta(&game_version.id, version.as_str())
                     .await?
                     .launcher_meta
                     .main_class
@@ -130,16 +122,11 @@ impl ModLoader {
         })
     }
 
-    pub async fn build_classpath(
-        &self,
-        libraries_path: &str,
-        game: &str,
-        rq: &reqwest::Client,
-    ) -> Result<Vec<String>, std::io::Error> {
+    pub async fn build_classpath(&self, libraries_path: &str, game: &str) -> Result<Vec<String>> {
         Ok(match self {
             ModLoader::Vanilla => vec![],
             ModLoader::Fabric { version } => {
-                let manifest = use_fabric_launcher_meta(game, version.as_str(), rq).await?;
+                let manifest = use_fabric_launcher_meta(game, version.as_str()).await?;
                 manifest
                     .launcher_meta
                     .libraries
@@ -165,58 +152,49 @@ impl ModLoader {
 }
 
 impl UnresolvedConfig {
-    pub fn read(path: &Path) -> Result<Self, std::io::Error> {
+    pub fn read(path: &Path) -> Result<Self> {
         let contents = std::fs::read_to_string(path)?;
-        toml::from_str(&contents)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+        Ok(toml::from_str(&contents)?)
     }
 
-    pub fn find(instance: &str) -> Result<Self, std::io::Error> {
+    pub fn find(instance: &str) -> Result<Self> {
+        Ok(Self::find_with_path(instance)?.1)
+    }
+
+    pub fn find_with_path(instance: &str) -> Result<(PathBuf, Self)> {
         if instance.ends_with(".toml") {
-            return Self::read(Path::new(instance));
+            return Ok((PathBuf::from(instance), Self::read(Path::new(instance))?));
         }
 
         let paths = vec![
-            dirs::config_dir()
-                .expect("config directory not found")
-                .join(format!("startmc/{instance}.toml")),
+            dirs::config_dir().context("config_dir not found")?.join(format!("startmc/{instance}.toml")),
             PathBuf::from(format!("./{instance}.startmc.toml")),
         ];
 
         for path in paths {
             if path.exists() {
-                return Self::read(&path);
+                let me = Self::read(&path)?;
+                return Ok((path, me));
             }
         }
 
-        Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "config not found",
-        ))
+        Err(eyre!("Config not found"))
     }
 
-    pub async fn resolve(self, rq: &reqwest::Client) -> Result<Config, std::io::Error> {
+    pub async fn resolve(self) -> Result<Config> {
         Ok(Config {
-            version: serde_json::from_str::<VersionPackage>(
-                &use_cached(
-                    &serde_json::from_str::<VersionManifestV2>(
-                        &use_cached(
-                            "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json",
-                            rq,
-                        )
-                        .await?,
-                    )
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
-                    .versions
-                    .into_iter()
-                    .find(|v| v.id == self.minecraft.version)
-                    .unwrap()
-                    .url,
-                    rq,
+            version: use_cached_json::<VersionPackage>(
+                &use_cached_json::<VersionManifestV2>(
+                    "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json",
                 )
-                .await?,
+                .await?
+                .versions
+                .into_iter()
+                .find(|v| v.id == self.minecraft.version)
+                .unwrap()
+                .url,
             )
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?,
+            .await?,
             java_path: self.paths.java.unwrap_or_else(|| {
                 std::env::var("JAVA_HOME")
                     .expect("JAVA_HOME not set, and java_path is not specified in config")
@@ -291,11 +269,7 @@ impl Config {
         ));
     }
 
-    pub async fn download_libraries(
-        &self,
-        queue: &mut Vec<Download>,
-        rq: &reqwest::Client,
-    ) -> Result<(), std::io::Error> {
+    pub async fn download_libraries(&self, queue: &mut Vec<Download>) -> Result<()> {
         let libs_path = Path::new(&self.libraries_path);
         for lib in &self.version.libraries {
             if !lib.check() {
@@ -334,7 +308,7 @@ impl Config {
         match &self.modloader {
             ModLoader::Vanilla => {}
             ModLoader::Fabric { version } => {
-                let manifest = use_fabric_launcher_meta(&self.version.id, &version, rq).await?;
+                let manifest = use_fabric_launcher_meta(&self.version.id, &version).await?;
                 for lib in manifest
                     .launcher_meta
                     .libraries
@@ -377,16 +351,11 @@ impl Config {
         Ok(())
     }
 
-    pub async fn download_assets(
-        &self,
-        queue: &mut Vec<Download>,
-        rq: &reqwest::Client,
-    ) -> Result<(), std::io::Error> {
+    pub async fn download_assets(&self, queue: &mut Vec<Download>) -> Result<()> {
         let index_path = Path::new(&self.assets_path)
             .join("indexes")
             .join(&self.version.asset_index.id);
-        let asset_index =
-            use_cache_custom_path(&self.version.asset_index.url, &rq, &index_path).await?;
+        let asset_index = use_cache_custom_path(&self.version.asset_index.url, &index_path).await?;
         let asset_index: AssetIndex = serde_json::from_str(&asset_index)?;
         for asset in asset_index.objects.values() {
             let path = Path::new(&self.assets_path)
@@ -412,12 +381,12 @@ impl Config {
         Ok(())
     }
 
-    pub async fn start(&self, rq: &reqwest::Client) -> Result<ExitStatus, std::io::Error> {
+    pub async fn start(&self) -> Result<ExitStatus> {
         let mut cmd =
             std::process::Command::new(Path::new(&self.java_path).join("bin").join("java"));
         let modloader_cp = self
             .modloader
-            .build_classpath(&self.libraries_path, &self.version.id, rq)
+            .build_classpath(&self.libraries_path, &self.version.id)
             .await?;
         cmd.current_dir(&self.minecraft_dir);
         cmd.arg("-cp");
@@ -459,7 +428,7 @@ impl Config {
         if let Some(path) = log4j_path {
             cmd.arg(format!("-Dlog4j.configurationFile={path}"));
         }
-        cmd.arg(self.modloader.get_main_class(&self.version.id, rq).await?);
+        cmd.arg(self.modloader.get_main_class(&self.version).await?);
         cmd.arg("--version");
         cmd.arg(&self.version.id);
         cmd.arg("--gameDir");
@@ -489,6 +458,6 @@ impl Config {
         }
 
         let mut child = cmd.spawn()?;
-        child.wait()
+        Ok(child.wait()?)
     }
 }

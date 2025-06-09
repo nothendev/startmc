@@ -3,6 +3,7 @@ extern crate tracing;
 
 use std::path::Path;
 
+use color_eyre::eyre::Context;
 use nu_ansi_term::Color;
 use reqwest::Url;
 use startmc_downloader::DownloaderBuilder;
@@ -15,7 +16,8 @@ mod config;
 mod sync;
 
 #[tokio::main]
-async fn main() -> Result<(), std::io::Error> {
+async fn main() -> color_eyre::Result<()> {
+    color_eyre::install()?;
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::builder()
@@ -26,19 +28,18 @@ async fn main() -> Result<(), std::io::Error> {
 
     let cli = cli::Cli::parse();
     debug!("{:?}", cli);
-    let rq = reqwest::Client::new();
 
     let cols = Color::Blue.bold().paint("::");
     match cli {
         cli::Cli::Run(instance) => {
-            let unresolved = config::UnresolvedConfig::find(&instance).expect("config not found");
+            let unresolved = config::UnresolvedConfig::find(&instance).context("config not found")?;
             println!(
                 "{cols} {running} {instance}",
                 running = Color::Default.bold().paint("Running instance"),
                 instance = Color::Green.paint(&instance)
             );
 
-            let config = unresolved.resolve(&rq).await?;
+            let config = unresolved.resolve().await.context("resolve config")?;
             let star = Color::Yellow.bold().paint("*");
             println!(
                 "{star} Using Java path: {javapath}",
@@ -56,8 +57,8 @@ async fn main() -> Result<(), std::io::Error> {
             let mut queue: Vec<startmc_downloader::Download> = vec![];
 
             config.download_client(&mut queue);
-            config.download_libraries(&mut queue, &rq).await?;
-            config.download_assets(&mut queue, &rq).await?;
+            config.download_libraries(&mut queue).await?;
+            config.download_assets(&mut queue).await?;
             if queue.len() > 0 {
                 println!(
                     "{cols} {downloading}",
@@ -74,7 +75,7 @@ async fn main() -> Result<(), std::io::Error> {
                 version = Color::Green.paint(&config.version.id)
             );
 
-            let status = config.start(&rq).await?;
+            let status = config.start().await?;
             let code = status.code().unwrap_or(i32::MIN);
 
             println!(
@@ -93,19 +94,25 @@ async fn main() -> Result<(), std::io::Error> {
         }
 
         cli::Cli::Sync(sync) => {
-            let unresolved =
-                config::UnresolvedConfig::find(&sync.instance).expect("config not found");
+            let (path, unresolved) =
+                config::UnresolvedConfig::find_with_path(&sync.instance).context("config not found")?;
+            let client = sync::Sync::new(&path)?;
+
             if sync.refresh {
-                // TODO: refresh content index
+                println!("{cols} {refreshing}", refreshing = Color::Default.bold().paint("Refreshing content index..."));
+                client.refresh().await?;
             }
             if sync.upgrade {
                 // TODO: upgrade content
+                println!("{cols} {upgrading}", upgrading = Color::Default.bold().paint("Upgrading content..."));
             }
+
+            client.index.write(&path)?;
         }
 
         cli::Cli::Upgrade(upgrade) => {
             let config =
-                config::UnresolvedConfig::find(&upgrade.instance).expect("config not found");
+                config::UnresolvedConfig::find(&upgrade.instance).context("config not found")?;
             let mut queue: Vec<startmc_downloader::Download> = vec![];
             let dest = match &upgrade.kind {
                 cli::UpgradeKind::Mod => {
@@ -165,6 +172,10 @@ async fn main() -> Result<(), std::io::Error> {
                     );
                 }
             }
+        }
+
+        cli::Cli::Remove(remove) => {
+            let config = config::UnresolvedConfig::find(&remove.instance).context("config not found")?;
         }
     }
 
