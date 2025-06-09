@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use color_eyre::eyre::ContextCompat;
 use nu_ansi_term::Color;
 
 use crate::cli::CliRemove;
@@ -17,6 +18,14 @@ impl CliRemove {
         let cols = Color::Blue.bold().paint("::");
 
         println!("{cols} {removing}", removing = Color::Default.bold().paint(format!("Removing {} packages...", self.packages.len())));
+        for package in self.packages {
+            let indexed = sync.index.packages.iter_mut().find(|it| it.id == package).context("package not found")?;
+            if self.disable {
+                indexed.disable_and_move();
+            }
+        }
+
+        sync.index.write(config_path)?;
 
         Ok(())
     }
