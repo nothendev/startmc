@@ -1,8 +1,14 @@
 use clap::*;
 
 #[derive(Debug)]
-pub enum Cli {
-    Run(String),
+pub struct Cli {
+    pub command: CliCommand,
+    pub instance: String,
+}
+
+#[derive(Debug)]
+pub enum CliCommand {
+    Run,
     Sync(CliSync),
     Upgrade(CliUpgrade),
     Remove(CliRemove),
@@ -10,7 +16,6 @@ pub enum Cli {
 
 #[derive(Debug)]
 pub struct CliSync {
-    pub instance: String,
     pub refresh: bool,
     pub upgrade: bool,
     pub operand: SyncOperand,
@@ -25,7 +30,6 @@ pub enum SyncOperand {
 
 #[derive(Debug)]
 pub struct CliUpgrade {
-    pub instance: String,
     pub packages: Vec<String>,
     pub kind: UpgradeKind,
 }
@@ -39,13 +43,12 @@ pub enum UpgradeKind {
 
 #[derive(Debug)]
 pub struct CliRemove {
-    pub instance: String,
     pub disable: bool,
     pub packages: Vec<String>,
 }
 
 impl Cli {
-    pub fn parse() -> Self {
+    pub fn parse() -> color_eyre::Result<Self> {
         let clap = Command::new("startmc")
             .version(env!("CARGO_PKG_VERSION"))
             .author(env!("CARGO_PKG_AUTHORS"))
@@ -132,63 +135,57 @@ impl Cli {
                             .required(true),
                     ),
             )
-            .get_matches();
+            .try_get_matches()?;
 
         let instance = clap.get_one::<String>("instance").unwrap().to_string();
-        match clap.subcommand() {
-            None => Cli::Run(instance),
-            Some(("sync", matches)) => {
-                let refresh = matches.get_flag("refresh");
-                let upgrade = matches.get_flag("upgrade");
-                let search = matches.get_many::<String>("search");
-                let package = matches.get_many::<String>("package");
+        Ok(Cli {
+            instance,
+            command: match clap.subcommand() {
+                None => CliCommand::Run,
+                Some(("sync", matches)) => {
+                    let refresh = matches.get_flag("refresh");
+                    let upgrade = matches.get_flag("upgrade");
+                    let search = matches.get_many::<String>("search");
+                    let package = matches.get_many::<String>("package");
 
-                Cli::Sync(CliSync {
-                    instance,
-                    operand: match (search, package) {
-                        (None, Some(packages)) => {
-                            SyncOperand::Install(packages.map(|p| p.to_string()).collect())
-                        }
-                        (Some(search), None) => {
-                            SyncOperand::Search(search.map(|s| s.to_string()).collect())
-                        }
-                        _ => SyncOperand::Nothing,
-                    },
-                    refresh,
-                    upgrade,
-                })
-            }
-            Some(("upgrade", matches)) => {
-                let packages = matches
-                    .get_many::<String>("packages")
-                    .unwrap()
-                    .map(|p| p.to_string())
-                    .collect();
-                let kind = if matches.get_flag("resourcepack") {
-                    UpgradeKind::Resourcepack
-                } else {
-                    UpgradeKind::Mod
-                };
-                Cli::Upgrade(CliUpgrade {
-                    instance,
-                    packages,
-                    kind,
-                })
-            }
-            Some(("remove", matches)) => {
-                let disable = matches.get_flag("disable");
-                let packages = matches
-                    .get_many::<String>("packages")
-                    .unwrap()
-                    .map(|p| p.to_string())
-                    .collect();
-                Cli::Remove(CliRemove {
-                    instance,
-                    disable,
-                    packages,
-                })
-            }
-            _ => unreachable!(),
-        }
+                    CliCommand::Sync(CliSync {
+                        operand: match (search, package) {
+                            (None, Some(packages)) => {
+                                SyncOperand::Install(packages.map(|p| p.to_string()).collect())
+                            }
+                            (Some(search), None) => {
+                                SyncOperand::Search(search.map(|s| s.to_string()).collect())
+                            }
+                            _ => SyncOperand::Nothing,
+                        },
+                        refresh,
+                        upgrade,
+                    })
+                }
+                Some(("upgrade", matches)) => {
+                    let packages = matches
+                        .get_many::<String>("packages")
+                        .unwrap()
+                        .map(|p| p.to_string())
+                        .collect();
+                    let kind = if matches.get_flag("resourcepack") {
+                        UpgradeKind::Resourcepack
+                    } else {
+                        UpgradeKind::Mod
+                    };
+                    CliCommand::Upgrade(CliUpgrade { packages, kind })
+                }
+                Some(("remove", matches)) => {
+                    let disable = matches.get_flag("disable");
+                    let packages = matches
+                        .get_many::<String>("packages")
+                        .unwrap()
+                        .map(|p| p.to_string())
+                        .collect();
+                    CliCommand::Remove(CliRemove { disable, packages })
+                }
+                _ => unreachable!(),
+            },
+        })
     }
 }

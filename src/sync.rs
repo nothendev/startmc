@@ -15,10 +15,11 @@ pub struct SyncIndexEntry {
 pub struct Sync {
     pub fer: ferinth::Ferinth<()>,
     pub index: SyncIndex,
+    pub minecraft_directory: PathBuf,
 }
 
 impl Sync {
-    pub fn new(normal_config_path: &Path) -> Result<Self> {
+    pub fn new(normal_config_path: &Path, minecraft_directory: &Path) -> Result<Self> {
         Ok(Self {
             fer: ferinth::Ferinth::<()>::new(
                 env!("CARGO_PKG_REPOSITORY"),
@@ -26,11 +27,20 @@ impl Sync {
                 Some(env!("CARGO_PKG_HOMEPAGE")),
             ),
             index: SyncIndex::read(normal_config_path)?,
+            minecraft_directory: minecraft_directory.to_path_buf(),
         })
     }
 
     pub async fn refresh(&mut self) -> Result<()> {
         Ok(())
+    }
+
+    pub async fn maybe_refresh(&mut self) -> Result<()> {
+        if self.index.0.is_empty() {
+            self.refresh().await
+        } else {
+            Ok(())
+        }
     }
 }
 
