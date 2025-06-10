@@ -72,10 +72,11 @@ impl CliSync {
                         bar = Color::DarkGray.bold().paint("|"),
                         follow_icon = Color::LightPurple.bold().paint(""),
                         follows = Color::Default.bold().paint(follows),
-                        desc = Color::Default.paint(&result.description),
+                        desc = result.description,
                     );
                 }
             }
+
             SyncOperand::Install(packages) => {
                 // TODO: install
                 println!(
