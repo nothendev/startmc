@@ -25,6 +25,15 @@ pub struct MinecraftConfig {
     pub fabric: Option<FabricConfig>,
 }
 
+impl MinecraftConfig {
+    pub fn get_loader_type(&self) -> Option<String> {
+        match self.fabric {
+            Some(FabricConfig { .. }) => Some(format!("fabric")),
+            None => None,
+        }
+    }
+}
+
 #[derive(Deserialize, Debug)]
 pub struct FabricConfig {
     pub version: String,

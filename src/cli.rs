@@ -1,5 +1,6 @@
 use crate::sync::{SyncFilter, VersionTuple};
 use clap::*;
+use ferinth::structures::search::Sort;
 
 #[derive(Debug)]
 pub struct Cli {
@@ -20,11 +21,15 @@ pub struct CliSync {
     pub refresh: bool,
     pub upgrade: bool,
     pub operand: SyncOperand,
+    pub loader: Option<String>,
 }
 
 #[derive(Debug)]
 pub enum SyncOperand {
-    Search(Vec<SyncFilter>),
+    Search {
+        filter: SyncFilter,
+        sort: Option<Sort>,
+    },
     Install(Vec<SyncFilter>),
     Nothing,
 }
@@ -84,8 +89,14 @@ impl Cli {
                             .short('s')
                             .long("search")
                             .action(ArgAction::Set)
-                            .num_args(1..)
                             .help("search remote repository for matching strings"),
+                    )
+                    .arg(
+                        Arg::new("sort")
+                            .short('o')
+                            .long("sort")
+                            .action(ArgAction::Set)
+                            .help("sort the search results"),
                     )
                     .arg(
                         Arg::new("package")
@@ -94,6 +105,13 @@ impl Cli {
                             .num_args(1..)
                             .conflicts_with("search")
                             .action(ArgAction::Set),
+                    )
+                    .arg(
+                        Arg::new("loader")
+                            .short('l')
+                            .long("loader")
+                            .action(ArgAction::Set)
+                            .help("set the needed mod loader"),
                     ),
             )
             .subcommand(
@@ -146,8 +164,20 @@ impl Cli {
                 Some(("sync", matches)) => {
                     let refresh = matches.get_flag("refresh");
                     let upgrade = matches.get_flag("upgrade");
-                    let search = matches.get_many::<String>("search");
+                    let search = matches.get_one::<String>("search");
                     let package = matches.get_many::<String>("package");
+                    let loader = matches.get_one::<String>("loader").map(|s| s.to_string());
+                    let sort = matches.get_one::<String>("sort").map(|s| {
+                        let s = s.to_lowercase();
+                        match s.as_str() {
+                            "relevance" => Sort::Relevance,
+                            "downloads" => Sort::Downloads,
+                            "follows" => Sort::Follows,
+                            "newest" => Sort::Newest,
+                            "updated" => Sort::Updated,
+                            _ => panic!("invalid sort: {s}"),
+                        }
+                    });
 
                     CliCommand::Sync(CliSync {
                         operand: match (search, package) {
@@ -156,13 +186,13 @@ impl Cli {
                                     .map(|p| p.parse().expect("invalid package"))
                                     .collect(),
                             ),
-                            (Some(search), None) => SyncOperand::Search(
-                                search
-                                    .map(|s| s.parse().expect("invalid package"))
-                                    .collect(),
-                            ),
+                            (Some(search), None) => SyncOperand::Search {
+                                filter: search.parse().expect("invalid package"),
+                                sort,
+                            },
                             _ => SyncOperand::Nothing,
                         },
+                        loader,
                         refresh,
                         upgrade,
                     })
