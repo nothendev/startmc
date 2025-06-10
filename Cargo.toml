@@ -49,3 +49,6 @@ color-eyre = { version = "0.6.5", default-features = false, features = [
 sha1_smol = { version = "1.0.1", features = ["std"] }
 rayon = "1.10.0"
 version-compare = "0.2.0"
+chrono = "0.4.41"
+chrono-humanize = "0.2.3"
+re_format = "0.23.3"

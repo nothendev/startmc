@@ -1,5 +1,7 @@
-use std::path::Path;
+use std::{collections::HashMap, path::Path};
 
+use chrono::Utc;
+use chrono_humanize::{Accuracy, Tense};
 use ferinth::structures::search::{Facet, Sort};
 use nu_ansi_term::Color;
 
@@ -49,17 +51,28 @@ impl CliSync {
                         vec![loader_facet],
                     )
                     .await?;
+
                 for result in results.hits {
                     // REFERENCE:
                     // {CYAN}aur/{DEFAULT BOLD}mrpack-install {GREEN BOLD}0.16.10-1 [{DEFAULT BOLD}+0 {DEFAULT BOLD}~0.00]
                     // \t{DEFAULT}Modrinth Modpack server deployment
 
-                    let slug = result.slug.expect("no slug");
+                    let modified_since = Utc::now() - result.date_modified;
+                    let ht = chrono_humanize::HumanTime::from(modified_since);
+                    let upd = ht.to_text_en(Accuracy::Rough, Tense::Past);
+                    let slug = result.slug.as_deref().unwrap_or(&result.project_id);
+                    let downloads = re_format::approximate_large_number(result.downloads as f64);
+                    let follows = re_format::approximate_large_number(result.follows as f64);
                     println!(
-                        "[{slug}] {title} {version}",
-                        slug = Color::Cyan.paint(&slug),
-                        title = Color::Default.bold().paint(result.title),
-                        version = Color::Green.bold().paint(result.latest_version)
+                        "{slug} <{upd}> [{dwl_icon} {downloads} {bar} {follow_icon} {follows}]\n    {desc}",
+                        slug = Color::Default.bold().paint(slug),
+                        upd = Color::Green.bold().paint(upd),
+                        dwl_icon = Color::Green.bold().paint(""),
+                        downloads = Color::Default.bold().paint(downloads),
+                        bar = Color::DarkGray.bold().paint("|"),
+                        follow_icon = Color::LightPurple.bold().paint(""),
+                        follows = Color::Default.bold().paint(follows),
+                        desc = Color::Default.paint(&result.description),
                     );
                 }
             }
