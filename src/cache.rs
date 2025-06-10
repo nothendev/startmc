@@ -28,10 +28,7 @@ pub fn get_cached_path(url: &str) -> std::path::PathBuf {
     path
 }
 
-pub async fn use_cache_custom_path(
-    url: &str,
-    path: &std::path::Path,
-) -> Result<String> {
+pub async fn use_cache_custom_path(url: &str, path: &std::path::Path) -> Result<String> {
     if path.exists() {
         let contents = std::fs::read_to_string(path)?;
         Ok(contents)

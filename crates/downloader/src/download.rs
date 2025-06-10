@@ -2,8 +2,8 @@
 
 use crate::Error;
 use reqwest::{
-    header::{ACCEPT_RANGES, CONTENT_LENGTH},
     StatusCode, Url,
+    header::{ACCEPT_RANGES, CONTENT_LENGTH},
 };
 use reqwest_middleware::ClientWithMiddleware;
 use std::convert::TryFrom;
@@ -45,7 +45,7 @@ impl Download {
         Self {
             url: url.clone(),
             filename: String::from(filename),
-            name
+            name,
         }
     }
 
@@ -105,7 +105,7 @@ impl TryFrom<&Url> for Download {
                 filename: form_urlencoded::parse(filename.as_bytes())
                     .map(|(key, val)| [key, val].concat())
                     .collect(),
-                name: None
+                name: None,
             })
             .ok_or_else(|| {
                 Error::InvalidUrl(format!("the url \"{}\" does not contain a filename", value))

@@ -1,13 +1,13 @@
 use serde::Deserialize;
 
-mod assets;
 mod argument;
+mod assets;
 mod fabric;
 mod file;
 mod rule;
 mod version;
-pub use assets::*;
 pub use argument::*;
+pub use assets::*;
 pub use fabric::*;
 pub use file::*;
 pub use rule::*;

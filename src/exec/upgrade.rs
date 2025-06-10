@@ -74,9 +74,13 @@ impl CliUpgrade {
             }
         }
 
-        let sync = crate::sync::Sync::new(&config_path, Path::new(&config.minecraft.directory))?;
-        println!("{cols} {refreshing}", refreshing = Color::Default.bold().paint("Refreshing content index..."));
-        sync.index.write(&config_path)?;
+        let mut sync =
+            crate::sync::Sync::new(&config_path, Path::new(&config.minecraft.directory))?;
+        println!(
+            "{cols} {refreshing}",
+            refreshing = Color::Default.bold().paint("Refreshing content index...")
+        );
+        sync.refresh().await?;
 
         Ok(())
     }

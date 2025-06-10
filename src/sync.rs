@@ -9,12 +9,18 @@ use color_eyre::{
     eyre::{Context, ContextCompat},
 };
 use ferinth::structures::project::ProjectType;
+use indicatif::{ParallelProgressIterator, ProgressBar, ProgressFinish, ProgressStyle};
+use nu_ansi_term::Color;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha1_smol::Sha1;
 
-use crate::sync::version::VersionTuple;
-
+mod filter;
+pub use filter::*;
 mod version;
+use startmc_downloader::ProgressBarOpts;
+pub use version::VersionTuple;
+use version_compare::Cmp;
 
 #[derive(Deserialize, Serialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IndexEntryKind {
@@ -39,6 +45,7 @@ pub struct Sync {
     pub minecraft_directory: PathBuf,
 }
 
+/// High level operations on sync, like refreshing the index
 impl Sync {
     pub fn new(normal_config_path: &Path, minecraft_directory: &Path) -> Result<Self> {
         Ok(Self {
@@ -53,35 +60,36 @@ impl Sync {
     }
 
     pub async fn refresh(&mut self) -> Result<()> {
-        let mut hashes = HashMap::new();
         let mods_dir = self.minecraft_directory.join("mods");
         let resourcepacks_dir = self.minecraft_directory.join("resourcepacks");
         let entries = tokio::task::spawn_blocking(|| {
             std::fs::read_dir(mods_dir)?
-                .chain(std::fs::read_dir(
-                    resourcepacks_dir
-                )?)
+                .chain(std::fs::read_dir(resourcepacks_dir)?)
                 .collect::<std::io::Result<Vec<DirEntry>>>()
         })
         .await
         .context("tokio fail")??;
 
         let entries_len = entries.len();
-        for (i, entry) in entries.into_iter().enumerate() {
-            if entry.file_type()?.is_dir() {
-                continue;
-            }
-            let path = entry.path();
-            let _path = path.clone();
-            debug!("({i}/{entries_len}) Hashing {}", path.display());
-            let hash = tokio::task::spawn_blocking(|| {
-                Ok::<_, std::io::Error>(Sha1::from(std::fs::read(_path)?.as_slice()).hexdigest())
+        let hashes: HashMap<PathBuf, String> = entries
+            .into_par_iter()
+            .progress_count(entries_len as u64)
+            .with_style(
+                ProgressStyle::default_bar()
+                    .template("{wide_msg} [{bar:69}] {percent}%")
+                    .unwrap()
+                    .progress_chars(ProgressBarOpts::CHARS_HASHTAG),
+            )
+            .with_message("(1/2) Hashing files...")
+            .with_finish(ProgressFinish::AndLeave)
+            .filter(|it| !it.file_type().unwrap().is_dir())
+            .map(|entry| {
+                let path = entry.path();
+                let hash =
+                    Sha1::from(std::fs::read(&path).expect("fs fail").as_slice()).hexdigest();
+                (path, hash)
             })
-            .await
-            .context("tokio fail")??;
-            debug!("({i}/{entries_len}) Hashed {}", path.display());
-            hashes.insert(path, hash);
-        }
+            .collect();
 
         debug!("Refreshing for {} files", hashes.len());
 
@@ -96,6 +104,15 @@ impl Sync {
             hashes.len() - versions.len()
         );
 
+        let progress = ProgressBar::new(hashes.len() as u64).with_finish(ProgressFinish::AndLeave);
+        progress.set_style(
+            ProgressStyle::default_bar()
+                .template("{wide_msg} [{bar:69}] {percent}%")
+                .unwrap()
+                .progress_chars(ProgressBarOpts::CHARS_HASHTAG),
+        );
+        progress.set_message("(2/2) Building index...");
+
         for (path, hash) in hashes.iter() {
             let filename = path.file_name().unwrap().to_str().unwrap();
             let disabled = filename.ends_with(".disabled");
@@ -104,7 +121,7 @@ impl Sync {
                 .packages
                 .iter()
                 .enumerate()
-                .find(|(i, it)| it.file == filename)
+                .find(|(_, it)| it.file == filename)
                 .map(|it| it.0);
             debug!("Processing {} ({})", filename, hash);
             match versions.get(hash) {
@@ -126,28 +143,30 @@ impl Sync {
                             version: version.version_number.clone(),
                             kind: match project.project_type {
                                 ProjectType::Mod => IndexEntryKind::Mod,
-                                ProjectType::Resourcepack => IndexEntryKind::Resourcepack,
+                                ProjectType::ResourcePack => IndexEntryKind::Resourcepack,
                                 t => {
                                     error!("unsupported project type: {t:?}, skipping...");
                                     continue;
                                 }
-                            }
+                            },
                         });
                     }
                 }
                 None => {
-                    let tuple = VersionTuple::parse(filename).context("parse version")?;
-                    let path = Path::new(filename);
-                    let kind = match path.extension().and_then(|it| it.to_str()).context("parse extension")?.trim_end_matches(".disabled") {
-                        "zip" => IndexEntryKind::Resourcepack,
-                        "jar" => IndexEntryKind::Mod,
-                        _ => {
-                            error!("unsupported file extension: {filename}, skipping...");
-                            continue;
-                        }
+                    let trimmed_filename = filename.trim_end_matches(".disabled");
+                    let tuple = VersionTuple::parse(trimmed_filename).context("parse version")?;
+                    let kind = if trimmed_filename.ends_with(".jar") {
+                        IndexEntryKind::Mod
+                    } else if trimmed_filename.ends_with(".zip") {
+                        IndexEntryKind::Resourcepack
+                    } else {
+                        error!("unsupported file extension: {filename}, skipping...");
+                        continue;
                     };
 
-                    debug!("{filename} not found on modrinth, parsed as {tuple:?} and kind={kind:?}");
+                    debug!(
+                        "{filename} not found on modrinth, parsed as {tuple:?} and kind={kind:?}"
+                    );
                     if let Some(index) = index {
                         debug!("{filename} found in index");
                         let package = &mut self.index.packages[index];
@@ -161,12 +180,15 @@ impl Sync {
                             modrinth_project: None,
                             modrinth_version_id: None,
                             version: tuple.version,
-                            kind
+                            kind,
                         });
                     }
                 }
             }
+            progress.inc(1);
         }
+
+        progress.finish();
 
         Ok(())
     }
@@ -186,6 +208,7 @@ pub struct SyncIndex {
     pub packages: Vec<SyncIndexEntry>,
 }
 
+/// Low level operations on the sync index and its entries
 impl SyncIndex {
     pub fn get_lock_path(normal_config_path: &Path) -> PathBuf {
         // default.toml -> default.lock.toml, default.startmc.toml -> default.lock.startmc.toml
@@ -213,13 +236,85 @@ impl SyncIndex {
         std::fs::write(Self::get_lock_path(normal_config_path), contents)?;
         Ok(())
     }
+
+    pub fn find_packages(&self, filter: &SyncFilter) -> Vec<usize> {
+        let indices = self
+            .packages
+            .iter()
+            .enumerate()
+            .filter_map(|(i, it)| {
+                if it.id != filter.name {
+                    return None;
+                }
+
+                if let Some(version) = &filter.version {
+                    match version {
+                        VersionFilter::Any => Some(i),
+                        VersionFilter::Op(version, Cmp::Eq) => {
+                            (it.version.as_str() == version.as_str()).then(|| i)
+                        }
+                        VersionFilter::Op(version, op) => matches!(
+                            version_compare::compare_to(it.version.as_str(), version.as_str(), *op),
+                            Ok(true)
+                        )
+                        .then(|| i),
+                    }
+                } else {
+                    Some(i)
+                }
+            })
+            .collect::<Vec<_>>();
+
+        if filter.version.is_none() && indices.len() > 1 {
+            println!(
+                "{cols} {error} {multiple_found}",
+                cols = Color::Blue.bold().paint("::"),
+                error = Color::Red.bold().paint("Error:"),
+                multiple_found = Color::Red.bold().paint(format!(
+                    "Multiple matches found for {name}, please specify version.",
+                    name = filter.name
+                ))
+            );
+            return vec![];
+        } else {
+            indices
+        }
+    }
 }
 
 impl SyncIndexEntry {
-    pub fn disable_and_move(&mut self, prefix: &Path) {
+    fn get_namespace(&self, prefix: &Path) -> PathBuf {
+        match self.kind {
+            IndexEntryKind::Mod => prefix.join("mods"),
+            IndexEntryKind::Resourcepack => prefix.join("resourcepacks"),
+        }
+    }
+
+    pub fn disable_and_move(&mut self, prefix: &Path) -> Result<(), std::io::Error> {
         self.disabled = true;
-        let mut path = prefix.join(&self.file);
-        path.set_extension(path.extension().unwrap().to_str().unwrap().trim_end_matches(".disabled"), );
-        std::fs::rename(path, self.file.clone()).unwrap();
+        let ns = self.get_namespace(prefix);
+        std::fs::rename(
+            ns.join(&self.file),
+            ns.join(format!("{}.disabled", self.file)),
+        )?;
+        self.file = format!("{}.disabled", self.file);
+        Ok(())
+    }
+
+    pub fn enable_and_move(&mut self, prefix: &Path) -> Result<(), std::io::Error> {
+        self.disabled = false;
+        let ns = self.get_namespace(prefix);
+        let enabled_filename = self.file.trim_end_matches(".disabled");
+        std::fs::rename(ns.join(&self.file), ns.join(enabled_filename))?;
+        self.file = enabled_filename.to_string();
+        Ok(())
+    }
+
+    pub fn remove_from_fs(&self, prefix: &Path) -> Result<(), std::io::Error> {
+        let ns = self.get_namespace(prefix);
+        let path = ns.join(&self.file);
+        debug!("remove_from_fs {}", path.display());
+        std::fs::remove_file(&path)?;
+        Ok(())
     }
 }

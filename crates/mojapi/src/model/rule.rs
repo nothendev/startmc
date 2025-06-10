@@ -11,7 +11,12 @@ pub struct Rule {
 
 impl Rule {
     pub fn check(&self) -> bool {
-        match self.os.as_ref().and_then(|it| it.get("name")).map(|s| s.as_str()) {
+        match self
+            .os
+            .as_ref()
+            .and_then(|it| it.get("name"))
+            .map(|s| s.as_str())
+        {
             Some("linux") => cfg!(target_os = "linux"),
             Some("windows") => cfg!(target_os = "windows"),
             Some("osx") => cfg!(target_os = "macos"),

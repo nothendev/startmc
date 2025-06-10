@@ -1,3 +1,4 @@
+use crate::sync::{SyncFilter, VersionTuple};
 use clap::*;
 
 #[derive(Debug)]
@@ -23,8 +24,8 @@ pub struct CliSync {
 
 #[derive(Debug)]
 pub enum SyncOperand {
-    Search(Vec<String>),
-    Install(Vec<String>),
+    Search(Vec<SyncFilter>),
+    Install(Vec<SyncFilter>),
     Nothing,
 }
 
@@ -44,7 +45,7 @@ pub enum UpgradeKind {
 #[derive(Debug)]
 pub struct CliRemove {
     pub disable: bool,
-    pub packages: Vec<String>,
+    pub packages: Vec<SyncFilter>,
 }
 
 impl Cli {
@@ -150,12 +151,16 @@ impl Cli {
 
                     CliCommand::Sync(CliSync {
                         operand: match (search, package) {
-                            (None, Some(packages)) => {
-                                SyncOperand::Install(packages.map(|p| p.to_string()).collect())
-                            }
-                            (Some(search), None) => {
-                                SyncOperand::Search(search.map(|s| s.to_string()).collect())
-                            }
+                            (None, Some(packages)) => SyncOperand::Install(
+                                packages
+                                    .map(|p| p.parse().expect("invalid package"))
+                                    .collect(),
+                            ),
+                            (Some(search), None) => SyncOperand::Search(
+                                search
+                                    .map(|s| s.parse().expect("invalid package"))
+                                    .collect(),
+                            ),
                             _ => SyncOperand::Nothing,
                         },
                         refresh,
@@ -180,7 +185,7 @@ impl Cli {
                     let packages = matches
                         .get_many::<String>("packages")
                         .unwrap()
-                        .map(|p| p.to_string())
+                        .map(|p| p.parse().expect("invalid package"))
                         .collect();
                     CliCommand::Remove(CliRemove { disable, packages })
                 }

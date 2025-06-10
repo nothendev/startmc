@@ -141,7 +141,6 @@ impl Default for DownloaderBuilder {
     }
 }
 
-
 #[cfg(test)]
 mod test {
     use super::*;

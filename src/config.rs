@@ -3,7 +3,10 @@ use std::{
     process::ExitStatus,
 };
 
-use color_eyre::{eyre::{eyre, ContextCompat}, Result};
+use color_eyre::{
+    Result,
+    eyre::{ContextCompat, eyre},
+};
 use reqwest::Url;
 use serde::Deserialize;
 use startmc_downloader::Download;
@@ -167,7 +170,9 @@ impl UnresolvedConfig {
         }
 
         let paths = vec![
-            dirs::config_dir().context("config_dir not found")?.join(format!("startmc/{instance}.toml")),
+            dirs::config_dir()
+                .context("config_dir not found")?
+                .join(format!("startmc/{instance}.toml")),
             PathBuf::from(format!("./{instance}.startmc.toml")),
         ];
 

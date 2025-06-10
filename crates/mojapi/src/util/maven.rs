@@ -26,7 +26,12 @@ impl MavenVersion {
     }
 
     pub fn get_path(&self) -> String {
-        format!("{group}/{artifact}/{version}/{artifact}-{version}.jar", group = self.group.replace('.', "/"), artifact = self.artifact, version = self.version)
+        format!(
+            "{group}/{artifact}/{version}/{artifact}-{version}.jar",
+            group = self.group.replace('.', "/"),
+            artifact = self.artifact,
+            version = self.version
+        )
     }
 
     pub fn get_url(&self, repo: &str) -> String {
