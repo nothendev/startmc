@@ -52,3 +52,4 @@ version-compare = "0.2.0"
 chrono = "0.4.41"
 chrono-humanize = "0.2.3"
 re_format = "0.23.3"
+openssl = { version = "0.10.73", features = ["vendored"] }
