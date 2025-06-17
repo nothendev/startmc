@@ -1,9 +1,9 @@
 use std::path::Path;
 
 use color_eyre::eyre::Context;
-use nu_ansi_term::Color;
+use owo_colors::OwoColorize;
 
-use crate::cli::CliRemove;
+use crate::{cli::CliRemove, util::cols};
 
 impl CliRemove {
     pub async fn exec(
@@ -14,11 +14,11 @@ impl CliRemove {
         let mut sync =
             crate::sync::Sync::new(&config_path, Path::new(&config.minecraft.directory))?;
         sync.maybe_refresh().await?;
-        let cols = Color::Blue.bold().paint("::");
+        let cols = cols();
 
         println!(
             "{cols} {removing}",
-            removing = Color::Default.bold().paint(format!(
+            removing = format!(
                 "{} {} packages...",
                 if self.disable {
                     "Disabling"
@@ -26,7 +26,7 @@ impl CliRemove {
                     "Removing"
                 },
                 self.packages.len()
-            ))
+            ).bold()
         );
 
         for filter in self.packages {

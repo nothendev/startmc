@@ -1,30 +1,31 @@
 use color_eyre::eyre::Context;
-use nu_ansi_term::Color;
+use owo_colors::OwoColorize;
 use startmc_downloader::DownloaderBuilder;
+
+use crate::util::{cols, green_arrow};
 
 pub async fn exec(instance: &str) -> color_eyre::Result<()> {
     let config = crate::config::UnresolvedConfig::find(instance).context("find config")?;
     let config = config.resolve().await?;
-    let cols = Color::Blue.bold().paint("::");
-    let star = Color::Yellow.bold().paint("*");
+    let cols = cols();
+    let arrow = green_arrow();
 
     println!(
         "{cols} {running} {instance}",
-        running = Color::Default.bold().paint("Running instance"),
-        instance = Color::Green.paint(instance)
+        running = "Running instance".bold(),
     );
 
     println!(
-        "{star} Using Java path: {javapath}",
-        javapath = Color::Cyan.paint(&config.java_path)
+        "{arrow} Using Java path: {javapath}",
+        javapath = config.java_path
     );
     println!(
-        "{star} Using libraries path: {librariespath}",
-        librariespath = Color::Cyan.paint(&config.libraries_path)
+        "{arrow} Using libraries path: {librariespath}",
+        librariespath = config.libraries_path
     );
     println!(
-        "{star} Using Minecraft directory: {minecraftdir}",
-        minecraftdir = Color::Cyan.paint(&config.minecraft_dir)
+        "{arrow} Using Minecraft directory: {minecraftdir}",
+        minecraftdir = config.minecraft_dir
     );
 
     let mut queue: Vec<startmc_downloader::Download> = vec![];
@@ -35,7 +36,7 @@ pub async fn exec(instance: &str) -> color_eyre::Result<()> {
     if queue.len() > 0 {
         println!(
             "{cols} {downloading}",
-            downloading = Color::Default.bold().paint("Downloading assets...")
+            downloading = "Downloading assets...".bold()
         );
 
         let downloader = DownloaderBuilder::new().concurrent_downloads(10).build();
@@ -44,8 +45,8 @@ pub async fn exec(instance: &str) -> color_eyre::Result<()> {
 
     println!(
         "{cols} {starting} {version}",
-        starting = Color::Default.bold().paint("Starting Minecraft"),
-        version = Color::Green.paint(&config.version.id)
+        starting = "Starting Minecraft".bold(),
+        version = config.version.id.green()
     );
 
     let status = config.start().await?;
@@ -53,13 +54,13 @@ pub async fn exec(instance: &str) -> color_eyre::Result<()> {
 
     println!(
         "{cols} {exited} {status}",
-        exited = Color::Default.bold().paint("Minecraft finished"),
+        exited = "Minecraft finished".bold(),
         status = if code == 0 {
-            Color::Green.paint("successfully").to_string()
+            "successfully".green().to_string()
         } else {
             format!(
                 "{} {}",
-                Color::Red.paint("with exit code").to_string(),
+                "with exit code".red().to_string(),
                 code
             )
         }

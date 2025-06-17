@@ -21,7 +21,7 @@ use crate::cache::{use_cache_custom_path, use_cached, use_cached_json};
 pub struct MinecraftConfig {
     pub version: String,
     pub directory: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fabric: Option<FabricConfig>,
 }
 
@@ -41,27 +41,27 @@ pub struct FabricConfig {
 
 #[derive(Deserialize, Serialize, Debug, Default)]
 pub struct PathsConfig {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub libraries: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assets: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub java: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Default)]
 pub struct ArgsConfig {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub jvm: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub game: String,
 }
 
 #[derive(Deserialize, Serialize, Debug, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum Log4jConfig {
-    Vanilla,
     #[default]
+    Vanilla,
     None,
     Custom(String),
 }

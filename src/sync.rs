@@ -10,7 +10,6 @@ use color_eyre::{
 };
 use ferinth::structures::project::ProjectType;
 use indicatif::{ParallelProgressIterator, ProgressBar, ProgressFinish, ProgressStyle};
-use nu_ansi_term::Color;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha1_smol::Sha1;
@@ -21,6 +20,8 @@ mod version;
 use startmc_downloader::ProgressBarOpts;
 pub use version::VersionTuple;
 use version_compare::Cmp;
+
+use crate::util::arrow_error;
 
 #[derive(Deserialize, Serialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IndexEntryKind {
@@ -266,15 +267,10 @@ impl SyncIndex {
             .collect::<Vec<_>>();
 
         if filter.version.is_none() && indices.len() > 1 {
-            println!(
-                "{cols} {error} {multiple_found}",
-                cols = Color::Blue.bold().paint("::"),
-                error = Color::Red.bold().paint("Error:"),
-                multiple_found = Color::Red.bold().paint(format!(
-                    "Multiple matches found for {name}, please specify version.",
-                    name = filter.name
-                ))
-            );
+            arrow_error(format!(
+                "Multiple matches found for {name}, please specify version.",
+                name = filter.name
+            ));
             return vec![];
         } else {
             indices

@@ -5,23 +5,24 @@ use chrono_humanize::{Accuracy, Tense};
 use color_eyre::eyre::Context;
 use ferinth::structures::search::{Facet, Sort};
 use indicatif::ProgressBar;
-use nu_ansi_term::Color;
+use owo_colors::OwoColorize;
 
-use crate::cli::{CliSync, SyncOperand};
+use crate::{
+    cli::{CliSync, SyncOperand},
+    util::cols,
+};
 
 impl CliSync {
-    pub async fn exec(
-        self,
-        instance: &str,
-    ) -> color_eyre::Result<()> {
-        let (config_path, config) = crate::config::UnresolvedConfig::find_with_path(instance).context("find config")?;
-        let cols = Color::Blue.bold().paint("::");
+    pub async fn exec(self, instance: &str) -> color_eyre::Result<()> {
+        let (config_path, config) =
+            crate::config::UnresolvedConfig::find_with_path(instance).context("find config")?;
+        let cols = cols();
         let mut sync =
             crate::sync::Sync::new(&config_path, Path::new(&config.minecraft.directory))?;
         if self.refresh {
             println!(
                 "{cols} {refreshing}",
-                refreshing = Color::Default.bold().paint("Refreshing content index...")
+                refreshing = "Refreshing content index...".bold()
             );
             sync.refresh().await?;
         }
@@ -30,7 +31,7 @@ impl CliSync {
             // TODO: upgrade content
             println!(
                 "{cols} {upgrading}",
-                upgrading = Color::Default.bold().paint("Upgrading content...")
+                upgrading = "Starting full content upgrade...".bold()
             );
         }
 
@@ -70,14 +71,14 @@ impl CliSync {
                     let follows = re_format::approximate_large_number(result.follows as f64);
                     println!(
                         "{slug} <{upd}> [{dwl_icon} {downloads} {bar} {follow_icon} {follows}]\n    {title} {desc}",
-                        slug = Color::Default.bold().paint(slug),
-                        title = Color::Yellow.bold().paint(&result.title),
-                        upd = Color::Green.italic().paint(upd),
-                        dwl_icon = Color::Green.bold().paint(""),
-                        downloads = Color::Default.bold().paint(downloads),
-                        bar = Color::LightGray.dimmed().bold().paint("|"),
-                        follow_icon = Color::LightPurple.bold().paint(""),
-                        follows = Color::Default.bold().paint(follows),
+                        slug = slug.bold(),
+                        title = result.title.yellow().bold(),
+                        upd = upd.green().italic(),
+                        dwl_icon = "".green().bold(),
+                        downloads = downloads.bold(),
+                        bar = "|".bright_white().dimmed().bold(),
+                        follow_icon = "".bright_magenta().bold(),
+                        follows = follows.bold(),
                         desc = result.description,
                     );
                 }
@@ -87,7 +88,7 @@ impl CliSync {
                 // TODO: install
                 println!(
                     "{cols} {installing} {len} packages",
-                    installing = Color::Default.bold().paint("Installing"),
+                    installing = "Installing".bold(),
                     len = packages.len()
                 );
             }

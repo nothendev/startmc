@@ -26,6 +26,11 @@ pub enum CliCommand {
 pub struct CliInit {
     pub version: Option<String>,
     pub fabric: Option<String>,
+    pub libraries: Option<String>,
+    pub java: Option<String>,
+    pub directory: Option<String>,
+    pub vanilla: bool,
+    pub username: Option<String>,
 }
 
 #[derive(Debug)]
@@ -121,6 +126,21 @@ impl Cli {
                             .short('d')
                             .long("directory")
                             .help("Instance directory")
+                            .action(ArgAction::Set),
+                    )
+                    .arg(
+                        Arg::new("vanilla")
+                            .short('V')
+                            .long("vanilla")
+                            .help("Do not use or ask for a mod loader")
+                            .conflicts_with("fabric")
+                            .action(ArgAction::SetTrue),
+                    )
+                    .arg(
+                        Arg::new("username")
+                            .short('u')
+                            .long("username")
+                            .help("The username to use")
                             .action(ArgAction::Set),
                     ),
             )
@@ -238,7 +258,25 @@ impl Cli {
                 Some(("init", matches)) => {
                     let version = matches.get_one::<String>("version").map(|s| s.to_string());
                     let fabric = matches.get_one::<String>("fabric").map(|s| s.to_string());
-                    CliCommand::Init(CliInit { version, fabric })
+                    let libraries = matches
+                        .get_one::<String>("libraries")
+                        .map(|s| s.to_string());
+                    let java = matches.get_one::<String>("java").map(|s| s.to_string());
+                    let directory = matches
+                        .get_one::<String>("directory")
+                        .map(|s| s.to_string());
+                    let username = matches.get_one::<String>("username").map(|s| s.to_string());
+                    let vanilla = matches.get_flag("vanilla");
+
+                    CliCommand::Init(CliInit {
+                        version,
+                        fabric,
+                        libraries,
+                        java,
+                        directory,
+                        username,
+                        vanilla,
+                    })
                 }
                 Some(("sync", matches)) => {
                     let refresh = matches.get_flag("refresh");
