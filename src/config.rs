@@ -51,6 +51,10 @@ pub struct PathsConfig {
 
 #[derive(Deserialize, Serialize, Debug, Default)]
 pub struct ArgsConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mem_min: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mem_max: Option<String>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub jvm: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -238,6 +242,8 @@ impl UnresolvedConfig {
             minecraft_dir: self.minecraft.directory,
             jvm_args: self.args.jvm.split(' ').map(|s| s.to_string()).collect(),
             game_args: self.args.game.split(' ').map(|s| s.to_string()).collect(),
+            mem_min: self.args.mem_min.unwrap_or_else(|| "512M".to_string()),
+            mem_max: self.args.mem_max.unwrap_or_else(|| "4G".to_string()),
             modloader: if let Some(fabric) = self.minecraft.fabric {
                 ModLoader::Fabric {
                     version: fabric.version,
@@ -265,6 +271,8 @@ pub struct Config {
     pub log4j: Log4jConfig,
     pub username: Option<String>,
     pub uuid: Option<String>,
+    pub mem_min: String,
+    pub mem_max: String,
 }
 
 impl Config {
@@ -374,7 +382,7 @@ impl Config {
     pub async fn download_assets(&self, queue: &mut Vec<Download>) -> Result<()> {
         let index_path = Path::new(&self.assets_path)
             .join("indexes")
-            .join(&self.version.asset_index.id);
+            .join(format!("{}.json", self.version.asset_index.id));
         let asset_index = use_cache_custom_path(&self.version.asset_index.url, &index_path).await?;
         let asset_index: AssetIndex = serde_json::from_str(&asset_index)?;
         for asset in asset_index.objects.values() {
@@ -409,6 +417,8 @@ impl Config {
             .build_classpath(&self.libraries_path, &self.version.id)
             .await?;
         cmd.current_dir(&self.minecraft_dir);
+        cmd.arg(format!("-Xms{}", self.mem_min));
+        cmd.arg(format!("-Xmx{}", self.mem_max));
         cmd.arg("-cp");
         cmd.arg(
             [self.get_client_jar_path().to_str().unwrap().to_string()]
@@ -442,7 +452,7 @@ impl Config {
                 }),
         );
         if self.jvm_args.len() > 0 {
-            cmd.args(&self.jvm_args);
+            cmd.args(self.jvm_args.iter().filter(|s| !s.trim().is_empty()));
         }
         let log4j_path = self.log4j.get_path(&self.libraries_path);
         if let Some(path) = log4j_path {
@@ -474,8 +484,10 @@ impl Config {
         cmd.arg("--versionType");
         cmd.arg("release");
         if self.game_args.len() > 0 {
-            cmd.args(&self.game_args);
+            cmd.args(self.game_args.iter().filter(|s| !s.trim().is_empty()));
         }
+
+        debug!("FINAL ARGUMENTS: {:#?}", cmd.get_args());
 
         let mut child = cmd.spawn()?;
         Ok(child.wait()?)
