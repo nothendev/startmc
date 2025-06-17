@@ -8,7 +8,7 @@ use color_eyre::{
     eyre::{ContextCompat, eyre},
 };
 use reqwest::Url;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use startmc_downloader::Download;
 use startmc_mojapi::{
     model::{AssetIndex, FABRIC_MAVEN, FabricVerisonGameLoader, VersionManifestV2, VersionPackage},
@@ -17,7 +17,7 @@ use startmc_mojapi::{
 
 use crate::cache::{use_cache_custom_path, use_cached, use_cached_json};
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct MinecraftConfig {
     pub version: String,
     pub directory: String,
@@ -34,12 +34,12 @@ impl MinecraftConfig {
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct FabricConfig {
     pub version: String,
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Deserialize, Serialize, Debug, Default)]
 pub struct PathsConfig {
     #[serde(default)]
     pub libraries: Option<String>,
@@ -49,7 +49,7 @@ pub struct PathsConfig {
     pub java: Option<String>,
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Deserialize, Serialize, Debug, Default)]
 pub struct ArgsConfig {
     #[serde(default)]
     pub jvm: String,
@@ -57,7 +57,7 @@ pub struct ArgsConfig {
     pub game: String,
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Deserialize, Serialize, Debug, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum Log4jConfig {
     Vanilla,
@@ -66,7 +66,7 @@ pub enum Log4jConfig {
     Custom(String),
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct UnresolvedConfig {
     pub minecraft: MinecraftConfig,
     #[serde(default)]
@@ -167,6 +167,12 @@ impl UnresolvedConfig {
     pub fn read(path: &Path) -> Result<Self> {
         let contents = std::fs::read_to_string(path)?;
         Ok(toml::from_str(&contents)?)
+    }
+
+    pub fn write(&self, path: &Path) -> Result<()> {
+        let contents = toml::to_string_pretty(self)?;
+        std::fs::write(path, contents)?;
+        Ok(())
     }
 
     pub fn find(instance: &str) -> Result<Self> {

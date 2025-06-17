@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use color_eyre::eyre::Context;
 use nu_ansi_term::Color;
 use reqwest::Url;
 use startmc_downloader::DownloaderBuilder;
@@ -10,9 +11,8 @@ impl CliUpgrade {
     pub async fn exec(
         self,
         instance: &str,
-        config: crate::config::UnresolvedConfig,
-        config_path: &Path,
     ) -> color_eyre::Result<()> {
+        let (config_path, config) = crate::config::UnresolvedConfig::find_with_path(instance).context("find config")?;
         let cols = Color::Blue.bold().paint("::");
         let mut queue: Vec<startmc_downloader::Download> = vec![];
         let dest = match &self.kind {

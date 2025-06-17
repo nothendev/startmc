@@ -1,11 +1,28 @@
 use super::*;
 
+pub type FabricVersionsLoader = Vec<LoaderFabricVersion>;
+pub type FabricVersionsGame = Vec<FabricVersionGame>;
+
+#[derive(Deserialize, Debug)]
+pub struct FabricVersionGame {
+    pub loader: LoaderFabricVersion,
+    pub intermediary: FabricVersion,
+}
+
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct FabricVerisonGameLoader {
     pub loader: FabricVersion,
     pub intermediary: FabricVersion,
     pub launcher_meta: FabricLauncherMeta,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct LoaderFabricVersion {
+    #[serde(flatten)]
+    pub version: FabricVersion,
+    pub separator: String, // usually `+build.`
+    pub build: u32
 }
 
 #[derive(Deserialize, Debug)]
@@ -47,3 +64,9 @@ pub struct FabricMainClasses {
 }
 
 pub const FABRIC_MAVEN: &str = "https://maven.fabricmc.net/";
+pub const FABRIC_VERSIONS_LOADER: &str = "https://meta.fabricmc.net/v2/versions/loader";
+
+/// Concat with `/GAMEVERSION/LOADERVERSION` to get [`FabricVersionsGameLoader`]
+///
+/// Or concat with `/GAMEVERSION` to get [`FabricVersionsGame`]
+pub const FABRIC_VERSIONS_GAME: &str = "https://meta.fabricmc.net/v2/versions/loader";

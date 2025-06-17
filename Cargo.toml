@@ -39,7 +39,7 @@ serde.workspace = true
 toml = { version = "0.8.23", features = ["display"] }
 dirs = "6.0.0"
 indicatif = { version = "0.17.11", features = ["rayon"] }
-dialoguer = "0.11.0"
+dialoguer = { version = "0.11.0", features = ["completion", "fuzzy-select"] }
 startmc_downloader.workspace = true
 serde_json = "1.0.140"
 ferinth = "2.12.0"
@@ -53,3 +53,4 @@ chrono = "0.4.41"
 chrono-humanize = "0.2.3"
 re_format = "0.23.3"
 openssl = { version = "0.10.73", features = ["vendored"] }
+pin-project-lite = "0.2.16"

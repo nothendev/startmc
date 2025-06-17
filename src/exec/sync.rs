@@ -1,7 +1,8 @@
-use std::{collections::HashMap, path::Path, time::Duration};
+use std::{path::Path, time::Duration};
 
 use chrono::Utc;
 use chrono_humanize::{Accuracy, Tense};
+use color_eyre::eyre::Context;
 use ferinth::structures::search::{Facet, Sort};
 use indicatif::ProgressBar;
 use nu_ansi_term::Color;
@@ -12,9 +13,8 @@ impl CliSync {
     pub async fn exec(
         self,
         instance: &str,
-        config: crate::config::UnresolvedConfig,
-        config_path: &Path,
     ) -> color_eyre::Result<()> {
+        let (config_path, config) = crate::config::UnresolvedConfig::find_with_path(instance).context("find config")?;
         let cols = Color::Blue.bold().paint("::");
         let mut sync =
             crate::sync::Sync::new(&config_path, Path::new(&config.minecraft.directory))?;

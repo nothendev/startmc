@@ -1,7 +1,10 @@
+use color_eyre::eyre::Context;
 use nu_ansi_term::Color;
 use startmc_downloader::DownloaderBuilder;
 
-pub async fn exec(instance: &str, config: crate::config::Config) -> color_eyre::Result<()> {
+pub async fn exec(instance: &str) -> color_eyre::Result<()> {
+    let config = crate::config::UnresolvedConfig::find(instance).context("find config")?;
+    let config = config.resolve().await?;
     let cols = Color::Blue.bold().paint("::");
     let star = Color::Yellow.bold().paint("*");
 

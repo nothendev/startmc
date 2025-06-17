@@ -1,6 +1,6 @@
 # startmc
 
-A CLI tool for launching Minecraft clients.
+A CLI tool and library for launching Minecraft clients.
 
 ## Features
 
@@ -59,6 +59,50 @@ sudo pacman -S mingw-w64-gcc
 cargo build --target x86_64-pc-windows-gnu --release
 ```
 3. The binary should be in `target/x86_64-pc-windows-gnu/release/startmc.exe`.
+
+## Usage as a library
+
+You can use this library to integrate any part of startmc's functionality into your own program, or invoke it programmatically, or make a wrapper around it, or anything else that comes to your mind!
+
+If you want to know more, please either generate API docs with `cargo doc --package startmc --lib`, or read the source code.
+
+If you see bad docs, or library-unfriendly code, or whatever else that is making it harder to use, please open an issue or, if you want, fix it and open a PR, I will greatly appreciate it.
+
+### Examples
+
+Invoke the CLI with your own args programmatically:
+```rust
+use startmc::cli::Cli;
+let cli = Cli::parse_from(["startmc", "-I", "-m", "1.20.1", "-f", "0.16.9"]).unwrap();
+cli.exec().await.unwrap();
+```
+
+Or construct it yourself:
+```rust
+use startmc::cli::*;
+
+let cli = Cli {
+    instance: "default".to_string(),
+    command: CliCommand::Init(CliInit {
+        version: Some("1.20.1".to_string()),
+        fabric: Some("0.16.9".to_string()),
+    }),
+};
+
+cli.exec().await.unwrap();
+```
+
+Use the cache:
+```rust
+use startmc::cache::*;
+use startmc::mojapi::model::fabric::*;
+
+let minecraft_version = "1.20.1";
+let fabric_versions = use_cached_json::<FabricVersionsGame>(&format!(
+    "{}/{minecraft_version}",
+    FABRIC_VERSIONS_GAME
+)).await.unwrap();
+```
 
 ## Credits
 

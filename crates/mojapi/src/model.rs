@@ -13,6 +13,8 @@ pub use file::*;
 pub use rule::*;
 pub use version::*;
 
+pub const VERSION_MANIFEST_V2: &str = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
+
 /// `https://piston-meta.mojang.com/mc/game/version_manifest_v2.json`
 #[derive(Deserialize, Debug)]
 pub struct VersionManifestV2 {
@@ -22,7 +24,7 @@ pub struct VersionManifestV2 {
 
 impl VersionManifestV2 {
     pub async fn fetch(rq: &reqwest::Client) -> Result<Self, reqwest::Error> {
-        rq.get("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json")
+        rq.get(VERSION_MANIFEST_V2)
             .send()
             .await?
             .json()

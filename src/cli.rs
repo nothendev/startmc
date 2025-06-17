@@ -1,7 +1,12 @@
-use crate::sync::{SyncFilter, VersionTuple};
+use std::ffi::OsString;
+
+use crate::sync::SyncFilter;
 use clap::*;
 use ferinth::structures::search::Sort;
 
+/// The main CLI struct.
+///
+/// You can invoke the CLI programmatically by either
 #[derive(Debug)]
 pub struct Cli {
     pub command: CliCommand,
@@ -11,9 +16,16 @@ pub struct Cli {
 #[derive(Debug)]
 pub enum CliCommand {
     Run,
+    Init(CliInit),
     Sync(CliSync),
     Upgrade(CliUpgrade),
     Remove(CliRemove),
+}
+
+#[derive(Debug)]
+pub struct CliInit {
+    pub version: Option<String>,
+    pub fabric: Option<String>,
 }
 
 #[derive(Debug)]
@@ -54,16 +66,63 @@ pub struct CliRemove {
 }
 
 impl Cli {
-    pub fn parse() -> color_eyre::Result<Self> {
-        let clap = Command::new("startmc")
+    /// Build the clap command.
+    pub fn command() -> clap::Command {
+        Command::new("startmc")
             .version(env!("CARGO_PKG_VERSION"))
             .author(env!("CARGO_PKG_AUTHORS"))
-            .about("Start Minecraft")
+            .about("Start Minecraft and manage content on any number of instances")
+            // this is an arg on the global command, so that:
+            // - you can leave it empty and it will default to "default"
+            // - you can specify a different instance name like `startmc INSTANCENAME` without any ugly arg flags
+            // - you can specify it and then use a command like `startmc INSTANCENAME -I` for example, which will init an instance with name `INSTANCENAME`
+            // - you can leave it empty and then use commands like `startmc -Sy` will sync the default instance's index
             .arg(
                 Arg::new("instance")
                     .help("Instance name")
                     .default_value("default")
                     .action(ArgAction::Set),
+            )
+            .subcommand(
+                Command::new("init")
+                    .short_flag('I')
+                    .long_flag("init")
+                    .about("Initialize a new instance")
+                    .arg(
+                        Arg::new("version")
+                            .short('m')
+                            .long("version")
+                            .help("Minecraft version")
+                            .action(ArgAction::Set),
+                    )
+                    .arg(
+                        Arg::new("fabric")
+                            .short('f')
+                            .long("fabric")
+                            .help("Fabric version, optional")
+                            .action(ArgAction::Set),
+                    )
+                    .arg(
+                        Arg::new("java")
+                            .short('j')
+                            .long("java")
+                            .help("Java path")
+                            .action(ArgAction::Set),
+                    )
+                    .arg(
+                        Arg::new("libraries")
+                            .short('l')
+                            .long("libraries")
+                            .help("Libraries path")
+                            .action(ArgAction::Append),
+                    )
+                    .arg(
+                        Arg::new("directory")
+                            .short('d')
+                            .long("directory")
+                            .help("Instance directory")
+                            .action(ArgAction::Set),
+                    ),
             )
             .subcommand(
                 Command::new("sync")
@@ -154,13 +213,33 @@ impl Cli {
                             .required(true),
                     ),
             )
-            .try_get_matches()?;
+    }
 
+    /// Parse a [`Cli`] from the command line arguments, i.e. [`std::env::args_os()`].
+    pub fn parse() -> color_eyre::Result<Self> {
+        Self::parse_from_matches(Self::command().try_get_matches()?)
+    }
+
+    /// Parse a [`Cli`] from a list of arguments. These can be anything that can be [`Into`]'d into an [`OsString`].
+    pub fn parse_from<S: Into<OsString> + Clone>(
+        args: impl IntoIterator<Item = S>,
+    ) -> color_eyre::Result<Self> {
+        Self::parse_from_matches(Self::command().try_get_matches_from(args)?)
+    }
+
+    /// Parse a [`Cli`] from clap [`ArgMatches`].
+    pub fn parse_from_matches(clap: ArgMatches) -> color_eyre::Result<Self> {
         let instance = clap.get_one::<String>("instance").unwrap().to_string();
+
         Ok(Cli {
             instance,
             command: match clap.subcommand() {
                 None => CliCommand::Run,
+                Some(("init", matches)) => {
+                    let version = matches.get_one::<String>("version").map(|s| s.to_string());
+                    let fabric = matches.get_one::<String>("fabric").map(|s| s.to_string());
+                    CliCommand::Init(CliInit { version, fabric })
+                }
                 Some(("sync", matches)) => {
                     let refresh = matches.get_flag("refresh");
                     let upgrade = matches.get_flag("upgrade");
