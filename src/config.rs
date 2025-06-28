@@ -409,21 +409,20 @@ impl Config {
         Ok(())
     }
 
-    pub async fn start(&self) -> Result<ExitStatus> {
-        let mut cmd =
-            std::process::Command::new(Path::new(&self.java_path).join("bin").join("java"));
-        let modloader_cp = self
-            .modloader
-            .build_classpath(&self.libraries_path, &self.version.id)
-            .await?;
-        cmd.current_dir(&self.minecraft_dir);
-        cmd.arg(format!("-Xms{}", self.mem_min));
-        cmd.arg(format!("-Xmx{}", self.mem_max));
-        cmd.arg("-cp");
-        cmd.arg(
+    pub async fn args(&self) -> Result<Vec<String>> {
+        let mut args = vec![
+            format!("-Xms{}", self.mem_min),
+            format!("-Xmx{}", self.mem_max),
+            "-cp".to_string(),
+        ];
+        args.extend(
             [self.get_client_jar_path().to_str().unwrap().to_string()]
                 .into_iter()
-                .chain(modloader_cp)
+                .chain(
+                    self.modloader
+                        .build_classpath(&self.libraries_path, &self.version.id)
+                        .await?,
+                )
                 .chain(
                     self.version
                         .libraries
@@ -444,50 +443,66 @@ impl Config {
                             )
                         }),
                 )
-                .collect::<Vec<_>>()
-                .join(if std::path::MAIN_SEPARATOR == '\\' {
-                    ";" // windows
-                } else {
-                    ":" // anywhere else (mac, linux)
-                }),
+                .collect::<Vec<_>>(),
         );
         if self.jvm_args.len() > 0 {
-            cmd.args(self.jvm_args.iter().filter(|s| !s.trim().is_empty()));
+            args.extend(
+                self.jvm_args
+                    .iter()
+                    .filter(|s| !s.trim().is_empty())
+                    .map(|s| s.to_string()),
+            );
         }
         let log4j_path = self.log4j.get_path(&self.libraries_path);
         if let Some(path) = log4j_path {
-            cmd.arg(format!("-Dlog4j.configurationFile={path}"));
+            args.push(format!("-Dlog4j.configurationFile={path}"));
         }
-        cmd.arg(self.modloader.get_main_class(&self.version).await?);
-        cmd.arg("--version");
-        cmd.arg(&self.version.id);
-        cmd.arg("--gameDir");
-        cmd.arg(&self.minecraft_dir);
-        cmd.arg("--assetsDir");
-        cmd.arg(&self.assets_path);
-        cmd.arg("--assetIndex");
-        cmd.arg(&self.version.asset_index.id);
-        cmd.arg("--uuid");
-        cmd.arg(
+        args.push(self.modloader.get_main_class(&self.version).await?);
+        args.push("--version".to_string());
+        args.push(self.version.id.clone());
+        args.push("--gameDir".to_string());
+        args.push(self.minecraft_dir.clone());
+        args.push("--assetsDir".to_string());
+        args.push(self.assets_path.clone());
+        args.push("--assetIndex".to_string());
+        args.push(self.version.asset_index.id.clone());
+        args.push("--uuid".to_string());
+        args.push(
             self.uuid
                 .as_deref()
-                .unwrap_or("12345678-1234-1234-1234-123456789012"),
+                .unwrap_or("12345678-1234-1234-1234-123456789012")
+                .to_string(),
         );
         if let Some(username) = self.username.as_deref() {
-            cmd.arg("--username");
-            cmd.arg(username);
+            args.push("--username".to_string());
+            args.push(username.to_string());
         }
-        cmd.arg("--accessToken");
-        cmd.arg("0");
-        cmd.arg("--userType");
-        cmd.arg("msa");
-        cmd.arg("--versionType");
-        cmd.arg("release");
+        args.push("--accessToken".to_string());
+        args.push("0".to_string());
+        args.push("--userType".to_string());
+        args.push("msa".to_string());
+        args.push("--versionType".to_string());
+        args.push("release".to_string());
         if self.game_args.len() > 0 {
-            cmd.args(self.game_args.iter().filter(|s| !s.trim().is_empty()));
+            args.extend(
+                self.game_args
+                    .iter()
+                    .filter(|s| !s.trim().is_empty())
+                    .map(|s| s.to_string()),
+            );
         }
 
-        debug!("FINAL ARGUMENTS: {:#?}", cmd.get_args());
+        Ok(args)
+    }
+
+    pub async fn start(&self) -> Result<ExitStatus> {
+        let mut cmd =
+            std::process::Command::new(Path::new(&self.java_path).join("bin").join("java"));
+        cmd.current_dir(&self.minecraft_dir);
+
+        let args = self.args().await?;
+        debug!("FINAL ARGUMENTS: {:#?}", args);
+        cmd.args(args);
 
         let mut child = cmd.spawn()?;
         Ok(child.wait()?)
