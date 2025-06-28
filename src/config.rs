@@ -5,7 +5,7 @@ use std::{
 
 use color_eyre::{
     Result,
-    eyre::{ContextCompat, eyre},
+    eyre::{Context, ContextCompat, eyre},
 };
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
@@ -504,7 +504,11 @@ impl Config {
         debug!("FINAL ARGUMENTS: {:#?}", args);
         cmd.args(args);
 
-        let mut child = cmd.spawn()?;
-        Ok(child.wait()?)
+        Ok(tokio::task::spawn_blocking(move || {
+            let mut child = cmd.spawn()?;
+            Ok::<_, color_eyre::Report>(child.wait()?)
+        })
+        .await
+        .context("cmd panic")??)
     }
 }
