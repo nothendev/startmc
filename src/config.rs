@@ -409,44 +409,68 @@ impl Config {
         Ok(())
     }
 
-    pub async fn args(&self) -> Result<Vec<String>> {
-        let mut args = vec![
-            format!("-Xms{}", self.mem_min),
-            format!("-Xmx{}", self.mem_max),
-            "-cp".to_string(),
-        ];
-        args.extend(
-            [self.get_client_jar_path().to_str().unwrap().to_string()]
-                .into_iter()
-                .chain(
-                    self.modloader
-                        .build_classpath(&self.libraries_path, &self.version.id)
-                        .await?,
-                )
-                .chain(
-                    self.version
-                        .libraries
-                        .iter()
-                        .filter(|l| {
-                            l.check()
-                                && if matches!(self.modloader, ModLoader::Fabric { .. }) {
-                                    !l.name.contains("ow2.asm:asm")
-                                } else {
-                                    true
-                                }
-                        })
-                        .map(|l| {
-                            format!(
-                                "{}/{}",
-                                self.libraries_path,
-                                l.downloads.artifact.path.as_str()
-                            )
-                        }),
-                )
-                .collect::<Vec<_>>(),
-        );
+    pub async fn args(&self) -> Result<JavaArgs> {
+        let mut args = JavaArgs {
+            jvm: vec![
+                format!("-Xms{}", self.mem_min),
+                format!("-Xmx{}", self.mem_max),
+                "-cp".to_string(),
+                [self.get_client_jar_path().to_str().unwrap().to_string()]
+                    .into_iter()
+                    .chain(
+                        self.modloader
+                            .build_classpath(&self.libraries_path, &self.version.id)
+                            .await?,
+                    )
+                    .chain(
+                        self.version
+                            .libraries
+                            .iter()
+                            .filter(|l| {
+                                l.check()
+                                    && if matches!(self.modloader, ModLoader::Fabric { .. }) {
+                                        !l.name.contains("ow2.asm:asm")
+                                    } else {
+                                        true
+                                    }
+                            })
+                            .map(|l| {
+                                format!(
+                                    "{}/{}",
+                                    self.libraries_path,
+                                    l.downloads.artifact.path.as_str()
+                                )
+                            }),
+                    )
+                    .collect::<Vec<_>>()
+                    .join(":"),
+            ],
+            main: self.modloader.get_main_class(&self.version).await?,
+            game: vec![
+                "--version".to_string(),
+                self.version.id.clone(),
+                "--gameDir".to_string(),
+                self.minecraft_dir.clone(),
+                "--assetsDir".to_string(),
+                self.assets_path.clone(),
+                "--assetIndex".to_string(),
+                self.version.asset_index.id.clone(),
+                "--uuid".to_string(),
+                self.uuid
+                    .as_deref()
+                    .unwrap_or("12345678-1234-1234-1234-123456789012")
+                    .to_string(),
+                "--accessToken".to_string(),
+                "0".to_string(),
+                "--userType".to_string(),
+                "msa".to_string(),
+                "--versionType".to_string(),
+                "release".to_string(),
+            ],
+        };
+
         if self.jvm_args.len() > 0 {
-            args.extend(
+            args.jvm.extend(
                 self.jvm_args
                     .iter()
                     .filter(|s| !s.trim().is_empty())
@@ -455,36 +479,16 @@ impl Config {
         }
         let log4j_path = self.log4j.get_path(&self.libraries_path);
         if let Some(path) = log4j_path {
-            args.push(format!("-Dlog4j.configurationFile={path}"));
+            args.jvm.push(format!("-Dlog4j.configurationFile={path}"));
         }
-        args.push(self.modloader.get_main_class(&self.version).await?);
-        args.push("--version".to_string());
-        args.push(self.version.id.clone());
-        args.push("--gameDir".to_string());
-        args.push(self.minecraft_dir.clone());
-        args.push("--assetsDir".to_string());
-        args.push(self.assets_path.clone());
-        args.push("--assetIndex".to_string());
-        args.push(self.version.asset_index.id.clone());
-        args.push("--uuid".to_string());
-        args.push(
-            self.uuid
-                .as_deref()
-                .unwrap_or("12345678-1234-1234-1234-123456789012")
-                .to_string(),
-        );
+
         if let Some(username) = self.username.as_deref() {
-            args.push("--username".to_string());
-            args.push(username.to_string());
+            args.game.push("--username".to_string());
+            args.game.push(username.to_string());
         }
-        args.push("--accessToken".to_string());
-        args.push("0".to_string());
-        args.push("--userType".to_string());
-        args.push("msa".to_string());
-        args.push("--versionType".to_string());
-        args.push("release".to_string());
+
         if self.game_args.len() > 0 {
-            args.extend(
+            args.game.extend(
                 self.game_args
                     .iter()
                     .filter(|s| !s.trim().is_empty())
@@ -502,7 +506,9 @@ impl Config {
 
         let args = self.args().await?;
         debug!("FINAL ARGUMENTS: {:#?}", args);
-        cmd.args(args);
+        cmd.args(args.jvm);
+        cmd.arg(args.main);
+        cmd.args(args.game);
 
         Ok(tokio::task::spawn_blocking(move || {
             let mut child = cmd.spawn()?;
@@ -511,4 +517,11 @@ impl Config {
         .await
         .context("cmd panic")??)
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct JavaArgs {
+    pub jvm: Vec<String>,
+    pub main: String,
+    pub game: Vec<String>,
 }
