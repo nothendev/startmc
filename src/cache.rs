@@ -1,5 +1,5 @@
-use color_eyre::eyre::Context;
 use color_eyre::Result;
+use color_eyre::eyre::Context;
 
 pub async fn use_cached(url: &str) -> Result<String> {
     use_cache_custom_path(url, &get_cached_path(url)).await
@@ -16,7 +16,10 @@ pub fn get_cached_path(url: &str) -> std::path::PathBuf {
     let cache = dirs::cache_dir()
         .expect("cache directory not found")
         .join("startmc");
-    let url = url.trim_start_matches("https://").trim_end().trim_end_matches('/');
+    let url = url
+        .trim_start_matches("https://")
+        .trim_end()
+        .trim_end_matches('/');
     debug!("Pure url: {url}");
     let url = url.replace('/', "__");
     debug!("Normalized url: {url}");
@@ -31,11 +34,21 @@ pub async fn use_cache_custom_path(url: &str, path: &std::path::Path) -> Result<
     } else {
         debug!("{path} doesn't exist! Creating...", path = path.display());
         let parent = path.parent().expect("path parent").to_owned();
-        tokio::task::spawn_blocking(|| std::fs::create_dir_all(parent)).await.context("tokio fail")??;
-        debug!("Downloading {url} to {path}", url = url, path = path.display());
+        tokio::task::spawn_blocking(|| std::fs::create_dir_all(parent))
+            .await
+            .context("tokio fail")??;
+        debug!(
+            "Downloading {url} to {path}",
+            url = url,
+            path = path.display()
+        );
         let res = reqwest::get(url).await?;
         let contents = res.text().await?;
-        debug!("Writing {bytes} bytes to {path}", bytes = contents.len(), path = path.display());
+        debug!(
+            "Writing {bytes} bytes to {path}",
+            bytes = contents.len(),
+            path = path.display()
+        );
         std::fs::write(path, &contents)?;
         Ok(contents)
     }

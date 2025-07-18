@@ -162,10 +162,7 @@ impl CliInit {
 
         let s = toml::to_string_pretty(&config).unwrap();
 
-        println!(
-            "{arrow} {msg}\n{s}",
-            msg = "Final config:".bold(),
-        );
+        println!("{arrow} {msg}\n{s}", msg = "Final config:".bold(),);
 
         let config_path = dirs::config_dir()
             .context("config_dir not found")?

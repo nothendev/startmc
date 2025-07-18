@@ -14,7 +14,7 @@ async fn main() -> color_eyre::Result<()> {
 
     let cli = match startmc::cli::Cli::parse() {
         Ok(cli) => cli,
-        Err(err) => err.exit()
+        Err(err) => err.exit(),
     };
     tracing::debug!("PARSED CLI: {:?}", cli);
     cli.exec().await

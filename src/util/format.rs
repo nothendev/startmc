@@ -7,19 +7,11 @@ pub fn cols() -> String {
 }
 
 pub fn arrow_error<'a>(text: impl Display) {
-    println!(
-        "{} {}",
-        "==> ERROR:".red().bold(),
-        text.bold()
-    )
+    println!("{} {}", "==> ERROR:".red().bold(), text.bold())
 }
 
 pub fn arrow_warn<'a>(text: impl Display) {
-    println!(
-        "{} {}",
-        "==> WARNING:".yellow().bold(),
-        text.bold()
-    )
+    println!("{} {}", "==> WARNING:".yellow().bold(), text.bold())
 }
 
 pub fn pacman_warn(text: impl Display) {

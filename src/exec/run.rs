@@ -58,11 +58,7 @@ pub async fn exec(instance: &str) -> color_eyre::Result<()> {
         status = if code == 0 {
             "successfully".green().to_string()
         } else {
-            format!(
-                "{} {}",
-                "with exit code".red().to_string(),
-                code
-            )
+            format!("{} {}", "with exit code".red().to_string(), code)
         }
     );
 

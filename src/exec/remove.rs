@@ -6,11 +6,9 @@ use owo_colors::OwoColorize;
 use crate::{cli::CliRemove, util::cols};
 
 impl CliRemove {
-    pub async fn exec(
-        self,
-        instance: &str,
-    ) -> color_eyre::Result<()> {
-        let (config_path, config) = crate::config::UnresolvedConfig::find_with_path(instance).context("find config")?;
+    pub async fn exec(self, instance: &str) -> color_eyre::Result<()> {
+        let (config_path, config) =
+            crate::config::UnresolvedConfig::find_with_path(instance).context("find config")?;
         let mut sync =
             crate::sync::Sync::new(&config_path, Path::new(&config.minecraft.directory))?;
         sync.maybe_refresh().await?;
@@ -26,7 +24,8 @@ impl CliRemove {
                     "Removing"
                 },
                 self.packages.len()
-            ).bold()
+            )
+            .bold()
         );
 
         for filter in self.packages {

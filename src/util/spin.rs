@@ -1,7 +1,4 @@
-use std::{
-    pin::Pin,
-    task::Poll,
-};
+use std::{pin::Pin, task::Poll};
 
 use indicatif::ProgressBar;
 
@@ -17,10 +14,7 @@ pin_project_lite::pin_project! {
 impl<T> SpinFuture<T> {
     fn new(future: T, spinner: ProgressBar, interval: std::time::Duration) -> Self {
         spinner.enable_steady_tick(interval);
-        Self {
-            future,
-            spinner,
-        }
+        Self { future, spinner }
     }
 }
 
@@ -40,11 +34,7 @@ impl<T: Future> Future for SpinFuture<T> {
 
 pub trait SpinExt: Sized {
     fn spin_until_ready(self, bar: ProgressBar) -> SpinFuture<Self> {
-        SpinFuture::new(
-            self,
-            bar,
-            std::time::Duration::from_millis(100),
-        )
+        SpinFuture::new(self, bar, std::time::Duration::from_millis(100))
     }
 
     fn spin_until_ready_with(
@@ -59,10 +49,5 @@ pub trait SpinExt: Sized {
 impl<T: Future> SpinExt for T {}
 
 pub async fn spin_until_ready<T: Future>(future: T, bar: ProgressBar) -> T::Output {
-    SpinFuture::new(
-        future,
-        bar,
-        std::time::Duration::from_millis(100),
-    )
-    .await
+    SpinFuture::new(future, bar, std::time::Duration::from_millis(100)).await
 }

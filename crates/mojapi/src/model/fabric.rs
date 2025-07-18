@@ -22,7 +22,7 @@ pub struct LoaderFabricVersion {
     #[serde(flatten)]
     pub version: FabricVersion,
     pub separator: String, // usually `+build.`
-    pub build: u32
+    pub build: u32,
 }
 
 #[derive(Deserialize, Debug)]
