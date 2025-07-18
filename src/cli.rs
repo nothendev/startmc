@@ -236,22 +236,24 @@ impl Cli {
     }
 
     /// Parse a [`Cli`] from the command line arguments, i.e. [`std::env::args_os()`].
-    pub fn parse() -> color_eyre::Result<Self> {
-        Self::parse_from_matches(Self::command().try_get_matches()?)
+    pub fn parse() -> Result<Self, clap::Error> {
+        Ok(Self::parse_from_matches(Self::command().try_get_matches()?))
     }
 
     /// Parse a [`Cli`] from a list of arguments. These can be anything that can be [`Into`]'d into an [`OsString`].
     pub fn parse_from<S: Into<OsString> + Clone>(
         args: impl IntoIterator<Item = S>,
-    ) -> color_eyre::Result<Self> {
-        Self::parse_from_matches(Self::command().try_get_matches_from(args)?)
+    ) -> Result<Self, clap::Error> {
+        Ok(Self::parse_from_matches(
+            Self::command().try_get_matches_from(args)?,
+        ))
     }
 
     /// Parse a [`Cli`] from clap [`ArgMatches`].
-    pub fn parse_from_matches(clap: ArgMatches) -> color_eyre::Result<Self> {
+    pub fn parse_from_matches(clap: ArgMatches) -> Self {
         let instance = clap.get_one::<String>("instance").unwrap().to_string();
 
-        Ok(Cli {
+        Cli {
             instance,
             command: match clap.subcommand() {
                 None => CliCommand::Run,
@@ -338,6 +340,6 @@ impl Cli {
                 }
                 _ => unreachable!(),
             },
-        })
+        }
     }
 }
